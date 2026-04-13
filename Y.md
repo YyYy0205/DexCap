@@ -1,18 +1,18 @@
 # DEXCAP
 > [Setup Tutorial](https://docs.google.com/document/d/1ANxSA_PctkqFf3xqAkyktgBgDWEb)
 ## 数据格式
-   demo1/data/frame_0001/
-   ├── color.png              # 彩色图像
-   ├── depth.png              # 深度图像  
-   ├── right_pose.txt         # 右肘姿态
-   ├── left_pose.txt          # 左肘姿态
-   ├── chest_pose.txt         # 胸部姿态
-   ├── raw_left_hand_joint_xyz.txt          # 左手关节位置
-   ├── raw_right_hand_joint_xyz.txt         # 右手关节位置
-   ├── raw_left_hand_joint_orientation.txt  # 左手关节朝向
-   └── raw_right_hand_joint_orientation.txt # 右手关节朝向
+**demo1/data/frame_0001/**
+* color.png              # 彩色图像
+* depth.png              # 深度图像  
+* right_pose.txt         # 右肘姿态
+* left_pose.txt          # 左肘姿态
+* chest_pose.txt         # 胸部姿态
+* raw_left_hand_joint_xyz.txt          # 左手关节位置
+* raw_right_hand_joint_xyz.txt         # 右手关节位置
+* raw_left_hand_joint_orientation.txt  # 左手关节朝向
+* raw_right_hand_joint_orientation.txt # 右手关节朝向
 
-## 硬件安装
+## 环境配置
 
 
 ### Redis serve （老版本，无需安装）
