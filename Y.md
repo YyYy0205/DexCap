@@ -1,5 +1,22 @@
 # DEXCAP
 > [Setup Tutorial](https://docs.google.com/document/d/1ANxSA_PctkqFf3xqAkyktgBgDWEb)
+
+## 方案
+1. DexCap
+   > 提取：手掌位置, 手掌朝向（yaw）, 手指开合
+2. 映射
+   > (x, y, z, yaw)
+3. IK（SO-101）
+4. 控制机器人
+
+## 难点
+1. 工作空间不匹配
+原因：人手范围 > 机器人范围
+2. 抖动（非常严重）
+> 解决：low-pass filter
+3. IK 不稳定
+> 解决：限制姿态变化/用上一步解作为初值
+
 ## 数据格式
 **demo1/data/frame_0001/**
 * color.png              # 彩色图像
@@ -12,10 +29,18 @@
 * raw_left_hand_joint_orientation.txt  # 左手关节朝向
 * raw_right_hand_joint_orientation.txt # 右手关节朝向
 
+**Robomimic格式 -- HDF5**
+* obs
+* actions
+* dones
+
 ## 环境配置
+### 设置streamVR 为无头模式
+> 参考：https://github.com/username223/SteamVRNoHeadset 按照readme配置好即可
 
+> 视频：https://drive.google.com/file/d/19tjjfK6J3VbHLQXgypuBamkh9hWEK3mJ/view
 
-### Redis serve （老版本，无需安装）
+### Redis serve （老版本，可忽律）
 1. windows 安装 redis 
 2. 设置 redis port 为 6669
 3. 测试 Redis
@@ -41,7 +66,7 @@
       > 勾选 Include connection
 
 ![alt text](微信图片_20260413162428_79_623.jpg)
-    > * 打开redis --- Windows （可忽略，老版本）
+   > * 打开redis --- Windows （可忽略，老版本）
        1. 端口 6669   
        2. 启动 redis-server
 
@@ -50,8 +75,7 @@
    1. conda activate dexcap
    2. cd DexCap/STEP1_collect_data
    3. python redis_glove_server.py
-   > 成功后会显示 "Server started，listening on port 14551"
-   > 并显示数据
+   > 成功后会显示 "Server started，listening on port 14551"  并显示手套数据
 
 ![alt text](37ab76ddf81cc54abd87f3fac031e5e7.jpg)
 
@@ -60,7 +84,7 @@
 1. **数据采集**
    1. cd DexCap/STEP1_collect_data_202408updates
 python 
-   2. vive_realsense_glove_datacollection.py NAME_OF_DEMO
+   2. python vive_realsense_glove_datacollection.py NAME_OF_DEMO
 
 2. **可视化数据**
    1. python vis_vive_realsense_glove_dataset.py NAME_OF_DEMO

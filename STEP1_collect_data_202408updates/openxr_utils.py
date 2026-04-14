@@ -133,7 +133,12 @@ class ContextObject(object):
         while True:
             try:
                 event_buffer = xr.poll_event(self.instance)
-                event_type = xr.StructureType(event_buffer.type)
+                try:
+                    event_type = xr.StructureType(event_buffer.type)
+                except ValueError:
+                    # Handle unknown StructureType values (e.g., Vive tracker extensions)
+                    print(f"Warning: Unknown StructureType {event_buffer.type}, skipping event")
+                    continue
                 if event_type == xr.StructureType.EVENT_DATA_INSTANCE_LOSS_PENDING:
                     # still handle rest of the events instead of immediately quitting
                     self.exit_render_loop = True

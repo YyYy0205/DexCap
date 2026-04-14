@@ -50,6 +50,13 @@ def start_server(port):
         # Attempt to parse JSON
         try:
             received_json = json.loads(decoded_data)
+            
+            # Simple debug to see the structure
+            print(f"JSON keys: {list(received_json.keys())}")
+            if 'scene' in received_json:
+                print(f"Scene keys: {list(received_json['scene'].keys())}")
+                if 'actors' in received_json['scene']:
+                    print(f"Number of actors: {len(received_json['scene']['actors'])}")
 
             # Initialize arrays to store the positions
             left_hand_positions = np.zeros((21, 3))

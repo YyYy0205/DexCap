@@ -13,12 +13,14 @@ import redis
 
 
 def main(dataset_folder):
+    # 设置数据文件夹结构
     dataset_folder, data_folder = utils.setup_folder_structure(dataset_folder)
 
     # Initialize Redis connection
     redis_host = "localhost"
     redis_port = 6669
     redis_password = ""  # If your Redis server has no password, keep it as an empty string.
+    # 初始化Redis连接（获取手套数据）
     r = redis.StrictRedis(
         host=redis_host, port=redis_port, password=redis_password, decode_responses=False
     )
@@ -28,13 +30,15 @@ def main(dataset_folder):
     first_2 = True
     first_3 = True
 
+    # 配置RealSense相机
     pipeline, pipeline_profile = utils.configure_realsense()
 
     intrinsics = pipeline_profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
     utils.save_camera_intrinsics(dataset_folder, intrinsics)
 
     align = rs.align(rs.stream.color)
-
+    
+    # 初始化OpenXR上下文（Vive追踪器）
     with ContextObject(
         instance_create_info=xr.InstanceCreateInfo(
             enabled_extension_names=[
@@ -93,82 +97,100 @@ def main(dataset_folder):
         frame_index = 0
 
         for frame_state in context.frame_loop():
-            if context.session_state == xr.SessionState.FOCUSED:
-                session_was_focused = True
-                active_action_set = xr.ActiveActionSet(action_set=context.default_action_set, subaction_path=xr.NULL_PATH)
-                xr.sync_actions(session=session, sync_info=xr.ActionsSyncInfo(count_active_action_sets=1, active_action_sets=ctypes.pointer(active_action_set)))
+            # Debug: print session state and frame info
+            print(f"Session state: {context.session_state}")
+            print(f"Frame state: predicted_display_time = {frame_state.predicted_display_time}")
+            
+            # Process trackers regardless of FOCUSED state for testing
+            active_action_set = xr.ActiveActionSet(action_set=context.default_action_set, subaction_path=xr.NULL_PATH)
+            xr.sync_actions(session=session, sync_info=xr.ActionsSyncInfo(count_active_action_sets=1, active_action_sets=ctypes.pointer(active_action_set)))
 
-                n_paths = ctypes.c_uint32(0)
-                result = enumerateViveTrackerPathsHTCX(instance, 0, byref(n_paths), None)
-                if xr.check_result(result).is_exception():
-                    raise result
-                vive_tracker_paths = (xr.ViveTrackerPathsHTCX * n_paths.value)(*([xr.ViveTrackerPathsHTCX()] * n_paths.value))
-                result = enumerateViveTrackerPathsHTCX(instance, n_paths, byref(n_paths), vive_tracker_paths)
-                if xr.check_result(result).is_exception():
-                    raise result
-                found_tracker_count = 0
+            n_paths = ctypes.c_uint32(0)
+            result = enumerateViveTrackerPathsHTCX(instance, 0, byref(n_paths), None)
+            if xr.check_result(result).is_exception():
+                raise result
+            vive_tracker_paths = (xr.ViveTrackerPathsHTCX * n_paths.value)(*([xr.ViveTrackerPathsHTCX()] * n_paths.value))
+            result = enumerateViveTrackerPathsHTCX(instance, n_paths, byref(n_paths), vive_tracker_paths)
+            if xr.check_result(result).is_exception():
+                raise result
+            
+            print(f"Enumerated {n_paths.value} Vive tracker paths")
+            found_tracker_count = 0
 
-                for index, space in enumerate(tracker_action_spaces):
-                    space_location = xr.locate_space(space=space, base_space=context.space, time=frame_state.predicted_display_time)
-                    if space_location.location_flags & xr.SPACE_LOCATION_POSITION_VALID_BIT:
-                        if role_strings[index] == 'right_elbow':
-                            if first:
-                                visualizer.set_pose_first([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 0)
-                                first = False
-                            else:
-                                visualizer.set_pose([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 0)
-                        elif role_strings[index] == 'left_elbow':
-                            if first_2:
-                                visualizer.set_pose_first([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 1)
-                                first_2 = False
-                            else:
-                                visualizer.set_pose([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 1)
-                        elif role_strings[index] == 'chest':
-                            if first_3:
-                                visualizer.set_pose_first([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 2)
-                                first_3 = False
-                            else:
-                                visualizer.set_pose([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 2)
+            # Create frame folder at the beginning of each frame
+            frame_folder = os.path.join(data_folder, f"frame_{frame_index:04d}")
+            os.makedirs(frame_folder, exist_ok=True)
 
-                        frame_folder = os.path.join(data_folder, f"frame_{frame_index:04d}")
-                        os.makedirs(frame_folder, exist_ok=True)
-                        if role_strings[index] == 'right_elbow':
-                            utils.save_pose(os.path.join(frame_folder, "right_pose.txt"), [space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z])
-                        elif role_strings[index] == 'left_elbow':
-                            utils.save_pose(os.path.join(frame_folder, "left_pose.txt"), [space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z])
-                        elif role_strings[index] == 'chest':
-                            utils.save_pose(os.path.join(frame_folder, "chest_pose.txt"), [space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z])
-
-                        found_tracker_count += 1
-
-                if found_tracker_count == 0:
-                    print("no trackers found")
-                    
-                frames = pipeline.wait_for_frames()
-                aligned_frames = align.process(frames)
-
-                depth_frame = aligned_frames.get_depth_frame()
-                color_frame = aligned_frames.get_color_frame()
-                if not depth_frame or not color_frame:
+            for index, space in enumerate(tracker_action_spaces):
+                # Use current time as fallback when predicted_display_time is invalid
+                use_time = frame_state.predicted_display_time
+                if use_time <= 0:
+                    use_time = time.time() * 1e9  # Convert to nanoseconds for OpenXR
+                    print(f"Using current time ({use_time}) as fallback for tracker {index}")
+                
+                try:
+                    space_location = xr.locate_space(space=space, base_space=context.space, time=use_time)
+                except xr.exception.TimeInvalidError as e:
+                    # Skip this tracker if time is still invalid
+                    print(f"Warning: TimeInvalidError for tracker {index}, skipping tracker")
                     continue
+                if space_location.location_flags & xr.SPACE_LOCATION_POSITION_VALID_BIT:
+                    if role_strings[index] == 'right_elbow':
+                        if first:
+                            visualizer.set_pose_first([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 0)
+                            first = False
+                        else:
+                            visualizer.set_pose([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 0)
+                    elif role_strings[index] == 'left_elbow':
+                        if first_2:
+                            visualizer.set_pose_first([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 1)
+                            first_2 = False
+                        else:
+                            visualizer.set_pose([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 1)
+                    elif role_strings[index] == 'chest':
+                        if first_3:
+                            visualizer.set_pose_first([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 2)
+                            first_3 = False
+                        else:
+                            visualizer.set_pose([space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z], 2)
 
-                color_image = np.asanyarray(color_frame.get_data())
-                depth_image = np.asanyarray(depth_frame.get_data())
-                utils.save_image(os.path.join(frame_folder, "color.png"), color_image)
-                cv2.imwrite(os.path.join(frame_folder, "depth.png"), depth_image)
+                    if role_strings[index] == 'right_elbow':
+                        utils.save_pose(os.path.join(frame_folder, "right_pose.txt"), [space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z])
+                    elif role_strings[index] == 'left_elbow':
+                        utils.save_pose(os.path.join(frame_folder, "left_pose.txt"), [space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z])
+                    elif role_strings[index] == 'chest':
+                        utils.save_pose(os.path.join(frame_folder, "chest_pose.txt"), [space_location.pose.position.x, space_location.pose.position.y, space_location.pose.position.z], [space_location.pose.orientation.w, space_location.pose.orientation.x, space_location.pose.orientation.y, space_location.pose.orientation.z])
 
-                # Retrieve and save hand joint data from Redis
-                raw_left_hand_joint_xyz = np.frombuffer(r.get("rawLeftHandJointXyz"), dtype=np.float64).reshape((21, 3))
-                raw_right_hand_joint_xyz = np.frombuffer(r.get("rawRightHandJointXyz"), dtype=np.float64).reshape((21, 3))
-                raw_left_hand_joint_orientation = np.frombuffer(r.get("rawLeftHandJointOrientation"), dtype=np.float64).reshape((21, 4))
-                raw_right_hand_joint_orientation = np.frombuffer(r.get("rawRightHandJointOrientation"), dtype=np.float64).reshape((21, 4))
+                    found_tracker_count += 1
 
-                np.savetxt(os.path.join(frame_folder, "raw_left_hand_joint_xyz.txt"), raw_left_hand_joint_xyz)
-                np.savetxt(os.path.join(frame_folder, "raw_right_hand_joint_xyz.txt"), raw_right_hand_joint_xyz)
-                np.savetxt(os.path.join(frame_folder, "raw_left_hand_joint_orientation.txt"), raw_left_hand_joint_orientation)
-                np.savetxt(os.path.join(frame_folder, "raw_right_hand_joint_orientation.txt"), raw_right_hand_joint_orientation)
+            if found_tracker_count == 0:
+                print("no trackers found")
+                
+            frames = pipeline.wait_for_frames()
+            aligned_frames = align.process(frames)
 
-                frame_index += 1
+            depth_frame = aligned_frames.get_depth_frame()
+            color_frame = aligned_frames.get_color_frame()
+            if not depth_frame or not color_frame:
+                continue
+
+            color_image = np.asanyarray(color_frame.get_data())
+            depth_image = np.asanyarray(depth_frame.get_data())
+            utils.save_image(os.path.join(frame_folder, "color.png"), color_image)
+            cv2.imwrite(os.path.join(frame_folder, "depth.png"), depth_image)
+
+            # Retrieve and save hand joint data from Redis
+            raw_left_hand_joint_xyz = np.frombuffer(r.get("rawLeftHandJointXyz"), dtype=np.float64).reshape((21, 3))
+            raw_right_hand_joint_xyz = np.frombuffer(r.get("rawRightHandJointXyz"), dtype=np.float64).reshape((21, 3))
+            raw_left_hand_joint_orientation = np.frombuffer(r.get("rawLeftHandJointOrientation"), dtype=np.float64).reshape((21, 4))
+            raw_right_hand_joint_orientation = np.frombuffer(r.get("rawRightHandJointOrientation"), dtype=np.float64).reshape((21, 4))
+
+            np.savetxt(os.path.join(frame_folder, "raw_left_hand_joint_xyz.txt"), raw_left_hand_joint_xyz)
+            np.savetxt(os.path.join(frame_folder, "raw_right_hand_joint_xyz.txt"), raw_right_hand_joint_xyz)
+            np.savetxt(os.path.join(frame_folder, "raw_left_hand_joint_orientation.txt"), raw_left_hand_joint_orientation)
+            np.savetxt(os.path.join(frame_folder, "raw_right_hand_joint_orientation.txt"), raw_right_hand_joint_orientation)
+
+            frame_index += 1
 
     if not session_was_focused:
         print("This OpenXR session never entered the FOCUSED state. Did you wear the headset?")
