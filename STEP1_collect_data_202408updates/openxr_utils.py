@@ -2,7 +2,6 @@ import ctypes
 from ctypes import cast, byref, POINTER
 import time
 import xr
-import numpy as np
 
 
 class ContextObject(object):
@@ -14,50 +13,82 @@ class ContextObject(object):
             view_configuration_type: xr.ViewConfigurationType = xr.ViewConfigurationType.PRIMARY_STEREO,
             environment_blend_mode=xr.EnvironmentBlendMode.OPAQUE,
             form_factor=xr.FormFactor.HEAD_MOUNTED_DISPLAY,
+            use_session=True  # ✅ 新增：控制是否创建session
     ):
         self._instance_create_info = instance_create_info
         self.instance = None
+
         self._session_create_info = session_create_info
         self.session = None
+        self.space = None
+
+        self.use_session = use_session  # ✅ 核心开关
+
         self.session_state = xr.SessionState.IDLE
         self._reference_space_create_info = reference_space_create_info
         self.view_configuration_type = view_configuration_type
         self.environment_blend_mode = environment_blend_mode
         self.form_factor = form_factor
+
         self.graphics = None
         self.graphics_binding_pointer = None
+
         self.action_sets = []
+        self.default_action_set = None
+
         self.render_layers = []
         self.swapchains = []
         self.swapchain_image_ptr_buffers = []
-        self.swapchain_image_buffers = []  # Keep alive
+        self.swapchain_image_buffers = []
+
         self.exit_render_loop = False
-        self.request_restart = False  # TODO: do like hello_xr
+        self.request_restart = False
         self.session_is_running = False
 
     def __enter__(self):
+        # ✅ 创建 instance（始终可以）
         self.instance = xr.create_instance(
             create_info=self._instance_create_info,
         )
-        self.system_id = xr.get_system(
-            instance=self.instance,
-            get_info=xr.SystemGetInfo(
-                form_factor=self.form_factor,
-            ),
-        )
 
+        # ✅ 获取 system（某些 runtime 可能仍失败，但一般OK）
+        try:
+            self.system_id = xr.get_system(
+                instance=self.instance,
+                get_info=xr.SystemGetInfo(
+                    form_factor=self.form_factor,
+                ),
+            )
+        except Exception as e:
+            print("[WARN] xr.get_system failed (no HMD?):", e)
+            self.system_id = None
+
+        # ✅ 如果不开 session → 到此为止
+        if not self.use_session or self.system_id is None:
+            print("[INFO] Running in HEADLESS mode (no XR session)")
+            self.session = None
+            self.space = None
+            return self
+
+        # =============================
+        # 正常 XR 模式（有头显才会进）
+        # =============================
         if self._session_create_info.next is not None:
             self.graphics_binding_pointer = self._session_create_info.next
 
         self._session_create_info.system_id = self.system_id
+
         self.session = xr.create_session(
             instance=self.instance,
             create_info=self._session_create_info,
         )
+
         self.space = xr.create_reference_space(
             session=self.session,
             create_info=self._reference_space_create_info
         )
+
+        # ✅ action set（仅在有 session 时）
         self.default_action_set = xr.create_action_set(
             instance=self.instance,
             create_info=xr.ActionSetCreateInfo(
@@ -74,20 +105,28 @@ class ContextObject(object):
         if self.default_action_set is not None:
             xr.destroy_action_set(self.default_action_set)
             self.default_action_set = None
+
         if self.space is not None:
             xr.destroy_space(self.space)
             self.space = None
+
         if self.session is not None:
             xr.destroy_session(self.session)
             self.session = None
+
         if self.graphics is not None:
             self.graphics.destroy()
             self.graphics = None
+
         if self.instance is not None:
             xr.destroy_instance(self.instance)
             self.instance = None
 
+    # ❌ 禁用 frame_loop（无头模式不能用）
     def frame_loop(self):
+        if not self.use_session or self.session is None:
+            raise RuntimeError("frame_loop() not available in headless mode")
+
         xr.attach_session_action_sets(
             session=self.session,
             attach_info=xr.SessionActionSetsAttachInfo(
@@ -97,58 +136,53 @@ class ContextObject(object):
                 )
             ),
         )
+
         while True:
             self.exit_render_loop = False
             self.poll_xr_events()
+
             if self.exit_render_loop:
                 break
+
             if self.session_is_running:
-                if self.session_state in (
-                        xr.SessionState.READY,
-                        xr.SessionState.SYNCHRONIZED,
-                        xr.SessionState.VISIBLE,
-                        xr.SessionState.FOCUSED,
-                ):
-                    frame_state = xr.wait_frame(self.session)
-                    xr.begin_frame(self.session)
-                    self.render_layers = []
+                frame_state = xr.wait_frame(self.session)
+                xr.begin_frame(self.session)
 
-                    yield frame_state
+                self.render_layers = []
+                yield frame_state
 
-                    xr.end_frame(
-                        self.session,
-                        frame_end_info=xr.FrameEndInfo(
-                            display_time=frame_state.predicted_display_time,
-                            environment_blend_mode=self.environment_blend_mode,
-                            layers=self.render_layers,
-                        )
+                xr.end_frame(
+                    self.session,
+                    frame_end_info=xr.FrameEndInfo(
+                        display_time=frame_state.predicted_display_time,
+                        environment_blend_mode=self.environment_blend_mode,
+                        layers=self.render_layers,
                     )
+                )
             else:
-                # Throttle loop since xrWaitFrame won't be called.
-                time.sleep(0.250)
+                time.sleep(0.25)
 
     def poll_xr_events(self):
-        self.exit_render_loop = False
-        self.request_restart = False
+        if self.instance is None:
+            return
+
         while True:
             try:
                 event_buffer = xr.poll_event(self.instance)
+
                 try:
                     event_type = xr.StructureType(event_buffer.type)
                 except ValueError:
-                    # Handle unknown StructureType values (e.g., Vive tracker extensions)
-                    print(f"Warning: Unknown StructureType {event_buffer.type}, skipping event")
                     continue
-                if event_type == xr.StructureType.EVENT_DATA_INSTANCE_LOSS_PENDING:
-                    # still handle rest of the events instead of immediately quitting
-                    self.exit_render_loop = True
-                    self.request_restart = True
-                elif event_type == xr.StructureType.EVENT_DATA_SESSION_STATE_CHANGED \
-                        and self.session is not None:
+
+                if event_type == xr.StructureType.EVENT_DATA_SESSION_STATE_CHANGED and self.session:
                     event = cast(
                         byref(event_buffer),
-                        POINTER(xr.EventDataSessionStateChanged)).contents
+                        POINTER(xr.EventDataSessionStateChanged)
+                    ).contents
+
                     self.session_state = xr.SessionState(event.state)
+
                     if self.session_state == xr.SessionState.READY:
                         xr.begin_session(
                             session=self.session,
@@ -157,83 +191,24 @@ class ContextObject(object):
                             ),
                         )
                         self.session_is_running = True
+
                     elif self.session_state == xr.SessionState.STOPPING:
                         self.session_is_running = False
                         xr.end_session(self.session)
-                    elif self.session_state == xr.SessionState.EXITING:
-                        self.exit_render_loop = True
-                        self.request_restart = False
-                    elif self.session_state == xr.SessionState.LOSS_PENDING:
-                        self.exit_render_loop = True
-                        self.request_restart = True
+
                 elif event_type == xr.StructureType.EVENT_DATA_VIVE_TRACKER_CONNECTED_HTCX:
-                    vive_tracker_connected = cast(byref(event_buffer), POINTER(xr.EventDataViveTrackerConnectedHTCX)).contents
+                    vive_tracker_connected = cast(
+                        byref(event_buffer),
+                        POINTER(xr.EventDataViveTrackerConnectedHTCX)
+                    ).contents
+
                     paths = vive_tracker_connected.paths.contents
-                    persistent_path_str = xr.path_to_string(self.instance, paths.persistent_path)
-                    # print(f"Vive Tracker connected: {persistent_path_str}")
-                    if paths.role_path != xr.NULL_PATH:
-                        role_path_str = xr.path_to_string(self.instance, paths.role_path)
-                        # print(f" New role is: {role_path_str}")
-                    else:
-                        # print(f" No role path.")
-                        pass
-                elif event_type == xr.StructureType.EVENT_DATA_INTERACTION_PROFILE_CHANGED:
-                    # print("data interaction profile changed")
-                    # TODO:
-                    pass
+                    persistent_path_str = xr.path_to_string(
+                        self.instance,
+                        paths.persistent_path
+                    )
+
+                    print(f"[INFO] Vive Tracker connected: {persistent_path_str}")
+
             except xr.EventUnavailable:
                 break
-
-    def view_loop(self, frame_state):
-        if frame_state.should_render:
-            layer = xr.CompositionLayerProjection(space=self.space)
-            view_state, views = xr.locate_views(
-                session=self.session,
-                view_locate_info=xr.ViewLocateInfo(
-                    view_configuration_type=self.view_configuration_type,
-                    display_time=frame_state.predicted_display_time,
-                    space=self.space,
-                )
-            )
-            num_views = len(views)
-            projection_layer_views = tuple(xr.CompositionLayerProjectionView() for _ in range(num_views))
-
-            vsf = view_state.view_state_flags
-            if (vsf & xr.VIEW_STATE_POSITION_VALID_BIT == 0
-                    or vsf & xr.VIEW_STATE_ORIENTATION_VALID_BIT == 0):
-                return  # There are no valid tracking poses for the views.
-            for view_index, view in enumerate(views):
-                view_swapchain = self.swapchains[view_index]
-                swapchain_image_index = xr.acquire_swapchain_image(
-                    swapchain=view_swapchain.handle,
-                    acquire_info=xr.SwapchainImageAcquireInfo(),
-                )
-                xr.wait_swapchain_image(
-                    swapchain=view_swapchain.handle,
-                    wait_info=xr.SwapchainImageWaitInfo(timeout=xr.INFINITE_DURATION),
-                )
-                layer_view = projection_layer_views[view_index]
-                assert layer_view.type == xr.StructureType.COMPOSITION_LAYER_PROJECTION_VIEW
-                layer_view.pose = view.pose
-                layer_view.fov = view.fov
-                layer_view.sub_image.swapchain = view_swapchain.handle
-                layer_view.sub_image.image_rect.offset[:] = [0, 0]
-                layer_view.sub_image.image_rect.extent[:] = [
-                    view_swapchain.width, view_swapchain.height, ]
-                swapchain_image_ptr = self.swapchain_image_ptr_buffers[view_index][swapchain_image_index]
-                swapchain_image = cast(swapchain_image_ptr, POINTER(xr.SwapchainImageOpenGLKHR)).contents
-                assert layer_view.sub_image.image_array_index == 0  # texture arrays not supported.
-                color_texture = swapchain_image.image
-                self.graphics.begin_frame(layer_view, color_texture)
-
-                yield view
-
-                self.graphics.end_frame()
-                xr.release_swapchain_image(
-                    swapchain=view_swapchain.handle,
-                    release_info=xr.SwapchainImageReleaseInfo()
-                )
-            layer.views = projection_layer_views
-            self.render_layers.append(byref(layer))
-
-
