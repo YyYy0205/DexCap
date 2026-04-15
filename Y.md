@@ -122,20 +122,7 @@ python redis_glove_server.py
 
 ### Step 2 采集数据
 
-#### 1. 数据采集（带 Tracker）
-
-```bash
-cd DexCap/STEP1_collect_data_202408updates
-python vive_realsense_glove_datacollection.py NAME_OF_DEMO
-```
-
-#### 2. 可视化数据
-
-```bash
-python vis_vive_realsense_glove_dataset.py NAME_OF_DEMO
-```
-
-#### 3. 采集数据（无 Tracker）
+#### 1. 采集数据（无 Tracker）
 
 ```bash
 cd DexCap/STEP1_collect_data
@@ -167,4 +154,17 @@ data_test/
 python playback_dataset.py -i ./data_test
 
 python playback_dataset.py -i ./data_test --fps 15
+```
+
+#### 2. 数据采集（带 Tracker）
+
+```bash
+cd DexCap/STEP1_collect_data_202408updates
+python vive_realsense_glove_datacollection.py NAME_OF_DEMO
+```
+
+#### 3. 可视化数据
+
+```bash
+python vis_vive_realsense_glove_dataset.py NAME_OF_DEMO
 ```
