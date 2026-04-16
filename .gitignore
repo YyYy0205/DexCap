@@ -2,3 +2,6 @@
 **/trained_models
 *.egg-info
 *.idea
+
+# 忽略数据（最重要）
+STEP1_collect_data_202408updates/demo_test/

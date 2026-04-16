@@ -25,6 +25,13 @@
 3. **IK 不稳定**
    > 解决：限制姿态变化/用上一步解作为初值
 
+4. tracker的位置是相对位置/固定世界坐标中的位置
+
+5. 记录时，tracker可能会失去跟踪，可能会缺少相关数据
+
+6. 怎么映射到双so101 机械臂的坐标中
+   
+
 ## 数据格式
 
 ### 原始数据格式
@@ -147,7 +154,7 @@ data_test/
       └── right_hand_joint_ori.txt   # 右手 21*4 个关节的四元数旋转
 ```
 * 但是缺少：手腕位姿
-> 但也可以转换为 HDF5（训练格式）用于手部抓取训练
+   > 但也可以转换为 HDF5（训练格式）用于手部抓取训练
 
 * 可视化数据
 ```bash
@@ -155,17 +162,49 @@ python playback_dataset.py -i ./data_test
 
 python playback_dataset.py -i ./data_test --fps 15
 ```
+![可视化数据](image-1.png)
 
 #### 2. 数据采集（带 Tracker）
-
 ```bash
 cd DexCap/STEP1_collect_data_202408updates
 python vive_realsense_glove_datacollection.py NAME_OF_DEMO
 ```
+* 先进行 tracker 无头模式测试
+* `python headless_tracker_test.py`
+>![tracker_test](image-2.png)
+> 测试通过，三个tracker都检测到，并识别到坐标
+
+* 无头模式测试
+* `python vive_realsense_glove_datacollection_headless.py demo_test`
+> 测试成功，三个tracker都检测到了，open3D显示正常
+>  ![alt text](image-3.png)
+
+* 数据结构
+```
+demo_test/
+├── camera_intrinsics.txt      # RealSense相机内参（焦距、主点、畸变系数）
+└── data/
+    ├── frame_0000/            # 第0帧数据
+    ├── frame_0001/            # 第1帧数据
+    └── frame_0170/            # 第170帧数据
+          └── color.png	      RGB彩色图像
+          ├── depth.png	      深度图像
+          ├── chest_pose.txt  胸部tracker位姿
+          ├── left_pose.txt	左肘tracker位姿
+          ├── left_pose.txt	左肘tracker位姿
+          ├── raw_left_hand_joint_xyz.txt 21个关节位置	21行×3列
+          ├── raw_left_hand_joint_orientation.txt 21个关节旋转	21行×4列 
+          ├── raw_right_hand_joint_xyz.txt
+          └── raw_right_hand_joint_orientation.txt
+```
+  * right_elbow
+    * -0.566 | -0.354 | -0.168 | 0.940 | -0.025 | 0.339 | 0.009
+    * 位置 (x,y,z)      ｜     旋转四元数 (w,x,y,z)
+    * x y z ｜ 可转换为 roll pitch yaw
 
 #### 3. 可视化数据
 
 ```bash
-python vis_vive_realsense_glove_dataset.py NAME_OF_DEMO
+python vis_vive_realsense_glove_dataset.py demo_test
 ```
-![可视化数据](image-1.png)
+> ![alt text](image-5.png)

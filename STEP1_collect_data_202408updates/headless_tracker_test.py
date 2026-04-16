@@ -43,9 +43,14 @@ def main():
         print(f"✅ Headless session created: {session}")
         
         # 创建参考空间
+        # 使用默认的identity pose (orientation=(0,0,0,1), position=(0,0,0))
+        identity_pose = xr.Posef(
+            orientation=xr.Quaternionf(x=0, y=0, z=0, w=1),
+            position=xr.Vector3f(x=0, y=0, z=0),
+        )
         reference_space_create_info = xr.ReferenceSpaceCreateInfo(
-            reference_space_type=xr.ReferenceSpaceType.LOCAL_FLOOR,
-            pose_in_reference_space=xr.Posef.identity(),
+            reference_space_type=xr.ReferenceSpaceType.LOCAL,  # LOCAL_FLOOR在headless模式下不支持
+            pose_in_reference_space=identity_pose,
         )
         space = xr.create_reference_space(session, reference_space_create_info)
         print(f"✅ Reference space created: {space}")
@@ -55,6 +60,42 @@ def main():
             xr.get_instance_proc_addr(instance, "xrEnumerateViveTrackerPathsHTCX"),
             xr.PFN_xrEnumerateViveTrackerPathsHTCX
         )
+        
+        # 处理初始事件，等待session状态变化
+        print("⏳ Waiting for session to become ready...")
+        for _ in range(50):  # 等待最多5秒
+            try:
+                while True:
+                    event_buffer = xr.poll_event(instance)
+                    event_type = xr.StructureType(event_buffer.type)
+                    
+                    if event_type == xr.StructureType.EVENT_DATA_SESSION_STATE_CHANGED:
+                        event = cast(
+                            byref(event_buffer),
+                            POINTER(xr.EventDataSessionStateChanged)
+                        ).contents
+                        print(f"  Session state: {event.state}")
+                        
+                        if event.state == xr.SessionState.READY:
+                            # 尝试开始session（headless模式可能直接进入）
+                            try:
+                                xr.begin_session(
+                                    session=session,
+                                    begin_info=xr.SessionBeginInfo(
+                                        primary_view_configuration_type=xr.ViewConfigurationType.PRIMARY_MONO,
+                                    ),
+                                )
+                                print("  ✅ Session began")
+                            except Exception as e:
+                                print(f"  ⚠️ begin_session failed: {e}")
+                        
+                        elif event.state == xr.SessionState.FOCUSED:
+                            print("  ✅ Session focused!")
+                            break
+            except xr.EventUnavailable:
+                pass
+            
+            time.sleep(0.1)
         
         # 枚举tracker路径
         n_paths = ctypes.c_uint32(0)
@@ -164,7 +205,11 @@ def main():
             try:
                 while True:
                     event_buffer = xr.poll_event(instance)
-                    event_type = xr.StructureType(event_buffer.type)
+                    try:
+                        event_type = xr.StructureType(event_buffer.type)
+                    except ValueError:
+                        # 忽略未知的Vive tracker扩展事件
+                        continue
                     
                     if event_type == xr.StructureType.EVENT_DATA_SESSION_STATE_CHANGED:
                         event = cast(
@@ -174,13 +219,16 @@ def main():
                         print(f"  Session state changed to: {event.state}")
                         
                         if event.state == xr.SessionState.READY:
-                            xr.begin_session(
-                                session=session,
-                                begin_info=xr.SessionBeginInfo(
-                                    view_configuration_type=xr.ViewConfigurationType.PRIMARY_MONO,
-                                ),
-                            )
-                            print("  ✅ Session began")
+                            try:
+                                xr.begin_session(
+                                    session=session,
+                                    begin_info=xr.SessionBeginInfo(
+                                        primary_view_configuration_type=xr.ViewConfigurationType.PRIMARY_MONO,
+                                    ),
+                                )
+                                print("  ✅ Session began")
+                            except Exception as e:
+                                print(f"  ⚠️ begin_session in loop: {e}")
                     
                     elif event_type == xr.StructureType.EVENT_DATA_VIVE_TRACKER_CONNECTED_HTCX:
                         print("  📡 Vive Tracker connected event!")
@@ -192,11 +240,11 @@ def main():
             current_time = int(time.time() * 1e9)  # 纳秒
             
             found_trackers = 0
-            for i, space in enumerate(tracker_action_spaces):
+            for i, tracker_space in enumerate(tracker_action_spaces):
                 try:
                     space_location = xr.locate_space(
-                        space=space,
-                        base_space=space,  # 使用自身作为参考
+                        space=tracker_space,
+                        base_space=space,  # 使用创建的参考空间作为base
                         time=current_time,
                     )
                     
