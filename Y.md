@@ -168,3 +168,4 @@ python vive_realsense_glove_datacollection.py NAME_OF_DEMO
 ```bash
 python vis_vive_realsense_glove_dataset.py NAME_OF_DEMO
 ```
+![可视化数据](image-1.png)
