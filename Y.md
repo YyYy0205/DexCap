@@ -3,7 +3,6 @@
 > [Setup Tutorial](https://docs.google.com/document/d/1ANxSA_PctkqFf3xqAkyktgBgDWEb)
 
 ## 方案
-
 1. **DexCap**
    > 提取：手掌位置, 手掌朝向（yaw）, 手指开合
 
@@ -15,7 +14,6 @@
 4. **控制机器人**
 
 ## 难点
-
 1. **工作空间不匹配**
    - 原因：人手范围 > 机器人范围
 
@@ -33,11 +31,8 @@
    
 
 ## 数据格式
-
 ### 原始数据格式
-
 **路径**：`demo1/data/frame_0001/`
-
 ```
 ├── frame_0
 │   ├── color_image.jpg      # Chest camera RGB image
@@ -91,7 +86,7 @@ conda activate dexcap
 python vive_test.py
 ```
 
-![alt text](3d09afced766cb0537851d33e8edd694.jpg)
+![alt text](trackers.jpg)
 
 #### 2. ROKOKO 连接手套
 
@@ -103,9 +98,9 @@ python vive_test.py
    - **Data format**: `Json v3`
    > 勾选 **Include connection**
 
-![alt text](微信图片_20260413162428_79_623.jpg)
+![alt text](gloves.jpg)
 
-> **Redis（老版本，可忽略）**
+> **Redis（老版本，可忽略）**s
 > - 端口：6669
 > - 启动：`redis-server`
 
@@ -125,10 +120,9 @@ python redis_glove_server.py
 > ```
 > 并显示手套数据
 
-![alt text](37ab76ddf81cc54abd87f3fac031e5e7.jpg)
+![alt text](gloves_data.jpg)
 
 ### Step 2 采集数据
-
 #### 1. 采集数据（无 Tracker）
 
 ```bash
@@ -197,9 +191,23 @@ demo_test/
           ├── raw_right_hand_joint_xyz.txt
           └── raw_right_hand_joint_orientation.txt
 ```
+* 21 数据组成：
+   * 0 wrist     （手腕）
+   * 1-4	thumb （拇指）
+   * 5-8	index （食指）
+   * 9-12	middle（中指）
+   * 13-16	ring  （无名指）
+   * 17-20	pinky （小指）
+     * -- mcp, pip, dip, tip
+
+> 1. MCP（Metacarpophalangeal Joint）：拇指与手腕之间的关节。
+> 2. PIP（Proximal Interphalangeal Joint）：拇指根部与第一指节之间的关节。
+> 3. DIP（Distal Interphalangeal Joint）：拇指第一指节与第二指节之间的关节。
+> 4. Tip（指尖）：拇指的最远端，即第二个指节末端。
+
   * right_elbow
     * -0.566 | -0.354 | -0.168 | 0.940 | -0.025 | 0.339 | 0.009
-    * 位置 (x,y,z)      ｜     旋转四元数 (w,x,y,z)
+    * 位置 x,y,z      ｜     旋转四元数 (w,x,y,z)
     * x y z ｜ 可转换为 roll pitch yaw
 
 #### 3. 可视化数据
