@@ -7,13 +7,15 @@
 - [x] **DexCap**
    > 提取：手掌位置, 手掌朝向（yaw）, 手指开合
 
-- [ ]  **坐标映射**
+- [x]  **坐标映射**
    > (x, y, z, yaw)
 
-- [ ]  **IK**（SO-101）
+- [x]  **IK**（SO-101）
    * 原流程：人手 21 关节 xyz → PyBullet IK → LEAP Hand 关节角度 → robomimic obs/actions
 
-- [ ]  **控制机器人**
+- [x]  **控制机器人**
+- [ ]  模仿学习
+   * ROBOMIMIC 格式
 
 ## 难点
 
@@ -32,7 +34,7 @@
 
 6. 怎么映射到双so101 机械臂的坐标中
 
-## 各模块：
+## 代码组成：
 1. STEP1:数据采集
    * `redis_glove_server.py` 接收手套 UDP 数据，推送至 Redis
    * `data_recording_new.py` 数据采集：无trackers数据
@@ -75,10 +77,8 @@
 - `obs` - 观测数据
 - `actions` - 动作数据
 - `dones` - 结束标记
-
---------------------------------------------------
-## 环境配置
-
+ 
+## 1 采集环境配置
 ### 设置 SteamVR 为无头模式
 
 > 参考：https://github.com/username223/SteamVRNoHeadset
@@ -110,8 +110,7 @@ cd Desktop/Dexcap/STEP1_collect_data_202408updates
 conda activate dexcap
 python vive_test.py
 ```
-
-![alt text](3d09afced766cb0537851d33e8edd694.jpg)
+![alt text](trackers.jpg)
 
 #### 2. ROKOKO 连接手套
 
@@ -123,7 +122,7 @@ python vive_test.py
    - **Data format**: `Json v3`
    > 勾选 **Include connection**
 
-![alt text](微信图片_20260413162428_79_623.jpg)
+![alt text](gloves.jpg)
 
 > **Redis（老版本，可忽略）**
 > - 端口：6669
@@ -145,18 +144,15 @@ python redis_glove_server.py
 > ```
 > 并显示手套数据
 
-![alt text](37ab76ddf81cc54abd87f3fac031e5e7.jpg)
+![alt text](gloves_data.jpg)
 
-### Step 2 采集数据
-
-#### 1. 采集数据（无 Tracker）
+## 2 采集数据
+### 1. 采集数据（无 Tracker）
 
 ```bash
 cd DexCap/STEP1_collect_data
 python data_recording.py -s --store_hand -o ./data_test
 ```
-
-![采数据](image.png)
 
 * 数据格式：
 ```
@@ -184,11 +180,8 @@ python playback_dataset.py -i ./data_test --fps 15
 ```
 ![可视化数据](image-1.png)
 
-#### 2. 数据采集（带 Tracker）
-```bash
-cd DexCap/STEP1_collect_data_202408updates
-python vive_realsense_glove_datacollection.py NAME_OF_DEMO
-```
+### 2. 采集数据（带 Tracker）
+
 * 先进行 tracker 无头模式测试
 * `python headless_tracker_test.py`
 >![tracker_test](image-2.png)
@@ -196,8 +189,22 @@ python vive_realsense_glove_datacollection.py NAME_OF_DEMO
 
 * 无头模式测试
 * `python vive_realsense_glove_datacollection_headless.py demo_test`
-> 测试成功，三个tracker都检测到了，open3D显示正常
+> 测试成功，保证三个tracker都检测到了，open3D显示正常
 >  ![alt text](image-3.png)
+
+* 采集数据：
+```bash
+终端1:
+conda activate dexcap
+cd DexCap/STEP1_collect_data
+python redis_glove_server.py
+
+终端2:
+conda activate dexcap
+cd DexCap/STEP1_collect_data_202408updates
+python vive_realsense_glove_datacollection.py NAME_OF_DEMO
+```
+![alt text](image.png)
 
 * 数据结构
 ```
@@ -216,29 +223,29 @@ demo_test/
           ├── raw_left_hand_joint_orientation.txt 21个关节旋转	21行×4列 
           ├── raw_right_hand_joint_xyz.txt
           └── raw_right_hand_joint_orientation.txt
-```
+
   * right_elbow
     * -0.566 | -0.354 | -0.168 | 0.940 | -0.025 | 0.339 | 0.009
     * 位置 (x,y,z)      ｜     旋转四元数 (w,x,y,z)
     * x y z ｜ 可转换为 roll pitch yaw
+```
 
-#### 3. 可视化数据
+### 3. 可视化数据
 
 ```bash
 python vis_vive_realsense_glove_dataset.py demo_test
 ```
 > ![alt text](image-6.png)
->
 
 
-在SO—101上复现采集的数据
---------------------------------------------------------
-1. 相对位移
+## 在SO—101上复现采集的数据
+
+1. 现在实现方案：相对位移
 * tracker位置: tracker[i] - tracker[0]
 *  起始位置:	通过 home_eef 手动设置
 * 核心公式: robot_pos = home_eef + scale × remap(Δtracker)
   
-2. 绝对位置
+2. Franka方案：绝对位置
 * tracker位置:	直接用 world 坐标中的绝对值
 * 起始位置:	通过 absolute_offset 标定
 * 核心公式: robot_pos = offset + remap(tracker_world_pos)
@@ -261,7 +268,7 @@ cd DexCap/so101_replay
 注意： 要创建两个分开的机械臂校准文件
 ```
 > 采集起始时tracker位置 = 机器人零位
-* 前期准备
+1. 前期准备
    * 读取零位末端坐标
    > `python get_home_eef.py`
    * 可视化tracker数据
@@ -272,18 +279,22 @@ cd DexCap/so101_replay
 1. Step 2：干跑，观察 IK 输出是否合理
 ` python replay_demo_so101.py --dry-run`
 
-1. Step 3：慢速实机（config.yaml 改 dry_run: false）
+2. Step 3：慢速实机（config.yaml 改 dry_run: false）
 `python replay_demo_so101.py --speed 0.3 `
-
-1. 全速
-`python replay_demo_so101.py --speed 1.0 `
 
 方案2: 使用与胸前tracker的相对位置
 ---------------------------------------------------------
  > 左右tracker相对于胸腔tracker的位置 = 机械臂的相对移动
+ * `python replay_demo_so101.py --speed 0.8`
  * 优点：不受到人移动的影响
- > mac: python vis_vive_realsense_glove_dataset.py 4_20
-
+ * 效果较好，能很好反应趋势
+  
  方案3: 与tracker进行坐标对齐，直接使用相同坐标
 ---------------------------------------------------------
+* 理论上可以，但实际上没必要，反而更麻烦。
+* 麻烦：absolute_offset 标定
 
+
+模仿学习训练
+---------------------------------------------------------
+1. 

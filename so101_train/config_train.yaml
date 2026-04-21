@@ -1,0 +1,29 @@
+# ── 数据集构建配置 ────────────────────────────────────────────────
+output: "dataset.hdf5"
+
+# 引用 replay 配置（复用坐标变换、IK、滤波等参数）
+replay_config: "../so101_replay/config.yaml"
+
+# 演示目录列表（可添加多个录制）
+demo_dirs:
+  - "../STEP1_collect_data_202408updates/4_20/data"
+  # - "../STEP1_collect_data_202408updates/4_17/data"
+
+# 动作超前帧数：action[i] = eef[i+gap] - eef[i]
+# 1 = 预测下一帧，大于1用于 action chunking（如 ACT/Diffusion Policy）
+action_gap: 1
+
+# 图像尺寸 [H, W]，null 保持原始分辨率
+image_size: [240, 320]
+
+# 动作缩放范围（供 robomimic 归一化用）
+# 训练时策略输出 [-1,1]，推理时乘以此值还原真实单位（米/弧度）
+action_scale:
+  dpos:  0.05    # 单步最大位移 5cm
+  dyaw:  0.3     # 单步最大偏航 0.3 rad
+  grip:  1.0     # 夹爪 [0,1]
+
+# ── 实机部署配置（env_real_so101.py 使用）────────────────────────
+deploy:
+  control_freq: 15      # Hz
+  speed_scale:  0.5
