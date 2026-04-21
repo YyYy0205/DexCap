@@ -1,0 +1,44 @@
+data:
+  demo_dir: "../STEP1_collect_data_202408updates/4_20/data"
+  fps: 15
+
+ik:
+  urdf_path: "../SO-ARM100/Simulation/SO101/so101_new_calib.urdf"
+  # 中间位
+  home_eef_right: [0.30, 0.012, 0.150]
+  home_eef_left:  [0.30, 0.01, 0.180]
+
+transform:
+  scale: 0.6
+  # OpenXR LOCAL 坐标：tracker[0]=X  tracker[1]=Y(竖直,固定)  tracker[2]=Z
+  # axis_remap: [a,b,c] → robot_x(前后)=tracker[a], robot_y(左右)=tracker[b], robot_z(上下)=tracker[c]
+  # axis_sign:  [±1,±1,±1] → 每轴是否取反（1=同向，-1=反向）
+  #
+  # 4_20标定数据结论（已知动作：上下→左右）：
+  #   tracker[1]=Y → 上下（OpenXR竖直轴，绿线幅度最大）→ robot_z
+  #   tracker[2]=Z → 左右（蓝线，左右阶段振荡）         → robot_y
+  #   tracker[0]=X → 前后（红线，缓慢漂移）              → robot_x
+  # 两臂 remap 相同（同一世界坐标系），sign 可不同
+
+  right_axis_remap: [2, 0, 1]    # robot_x(前后)=tracker[2], robot_y(左右)=tracker[0], robot_z(上下)=tracker[1]
+  right_axis_sign:  [-1, 1, 1]   # x方向取反(OpenXR+Z向后=robot-X向前), yz待验证
+
+  left_axis_remap:  [2, 0, 1]
+  left_axis_sign:   [-1, 1, 1]   # 待验证每轴方向
+
+gripper:
+  dist_open:   0.10   # 用 calibrate_gripper() 统计后替换
+  dist_closed: 0.06
+
+filter:
+  cutoff_hz: 2.0
+  order: 4
+
+robot:
+  dry_run: false       # 先干跑，确认OK后改为 false
+  speed_scale: 0.5    # 1.0=原速，先用慢速
+
+  # 双臂串口配置
+  # 查找串口：ls /dev/tty.usbserial-* （机器人插入USB后运行）
+  port_right: "/dev/tty.usbmodem5B420765891"   # 右臂串口，替换为实际值
+  port_left:  "/dev/tty.usbmodem5AAF2194591"   # 左臂串口，替换为实际值

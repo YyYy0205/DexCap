@@ -3,17 +3,20 @@
 > [Setup Tutorial](https://docs.google.com/document/d/1ANxSA_PctkqFf3xqAkyktgBgDWEb)
 
 ## 方案
-1. **DexCap**
+
+- [x] **DexCap**
    > 提取：手掌位置, 手掌朝向（yaw）, 手指开合
 
-2. **映射**
+- [ ]  **坐标映射**
    > (x, y, z, yaw)
 
-3. **IK**（SO-101）
+- [ ]  **IK**（SO-101）
+   * 原流程：人手 21 关节 xyz → PyBullet IK → LEAP Hand 关节角度 → robomimic obs/actions
 
-4. **控制机器人**
+- [ ]  **控制机器人**
 
 ## 难点
+
 1. **工作空间不匹配**
    - 原因：人手范围 > 机器人范围
 
@@ -28,11 +31,32 @@
 5. 记录时，tracker可能会失去跟踪，可能会缺少相关数据
 
 6. 怎么映射到双so101 机械臂的坐标中
+
+## 各模块：
+1. STEP1:数据采集
+   * `redis_glove_server.py` 接收手套 UDP 数据，推送至 Redis
+   * `data_recording_new.py` 数据采集：无trackers数据
+   * `playback_dataset.py` 数据回放
+
+2. STEP1 updata：数据采集
+   * `vive_test.py` 测试tracker 连接
+   * `vive_realsense_glove_datacollection_headless.py` 无头模式数据采集
+   * `vis_vive_realsense_glove_dataset.py demo_test` 可视化采集数据
+
+3. STEP2：数据集构建
+   * `pybullet_ik_bimanuak.py` PyBullet 双手 IK
+   * `demo_create_hdf5.py`生成robomimic格式 HDF5
+   * `dataset_utils.py` 读取原始数据，转换为末端位姿
+   * `utils.py` 针对偏移的映射
    
+4. STEP3：策略训练
+   * 基于 robomimic 框架， 10+ 种遗传算法
+      > BC / BCQ / CQL / IQL / TD3+BC / HBC / IRIS / GL / BC-Transformer / Diffusion Policy ← 默认推荐
 
 ## 数据格式
 ### 原始数据格式
 **路径**：`demo1/data/frame_0001/`
+
 ```
 ├── frame_0
 │   ├── color_image.jpg      # Chest camera RGB image
@@ -52,6 +76,7 @@
 - `actions` - 动作数据
 - `dones` - 结束标记
 
+--------------------------------------------------
 ## 环境配置
 
 ### 设置 SteamVR 为无头模式
@@ -86,7 +111,7 @@ conda activate dexcap
 python vive_test.py
 ```
 
-![alt text](trackers.jpg)
+![alt text](3d09afced766cb0537851d33e8edd694.jpg)
 
 #### 2. ROKOKO 连接手套
 
@@ -98,15 +123,15 @@ python vive_test.py
    - **Data format**: `Json v3`
    > 勾选 **Include connection**
 
-![alt text](gloves.jpg)
+![alt text](微信图片_20260413162428_79_623.jpg)
 
-> **Redis（老版本，可忽略）**s
+> **Redis（老版本，可忽略）**
 > - 端口：6669
 > - 启动：`redis-server`
 
 #### 3. 启动数据采集（NUC）
 
-> 确保连接到专用网络
+确保连接到专用网络
 
 ```bash
 conda activate dexcap
@@ -120,9 +145,10 @@ python redis_glove_server.py
 > ```
 > 并显示手套数据
 
-![alt text](gloves_data.jpg)
+![alt text](37ab76ddf81cc54abd87f3fac031e5e7.jpg)
 
 ### Step 2 采集数据
+
 #### 1. 采集数据（无 Tracker）
 
 ```bash
@@ -191,23 +217,9 @@ demo_test/
           ├── raw_right_hand_joint_xyz.txt
           └── raw_right_hand_joint_orientation.txt
 ```
-* 21 数据组成：
-   * 0 wrist     （手腕）
-   * 1-4	thumb （拇指）
-   * 5-8	index （食指）
-   * 9-12	middle（中指）
-   * 13-16	ring  （无名指）
-   * 17-20	pinky （小指）
-     * -- mcp, pip, dip, tip
-
-> 1. MCP（Metacarpophalangeal Joint）：拇指与手腕之间的关节。
-> 2. PIP（Proximal Interphalangeal Joint）：拇指根部与第一指节之间的关节。
-> 3. DIP（Distal Interphalangeal Joint）：拇指第一指节与第二指节之间的关节。
-> 4. Tip（指尖）：拇指的最远端，即第二个指节末端。
-
   * right_elbow
     * -0.566 | -0.354 | -0.168 | 0.940 | -0.025 | 0.339 | 0.009
-    * 位置 x,y,z      ｜     旋转四元数 (w,x,y,z)
+    * 位置 (x,y,z)      ｜     旋转四元数 (w,x,y,z)
     * x y z ｜ 可转换为 roll pitch yaw
 
 #### 3. 可视化数据
@@ -215,4 +227,63 @@ demo_test/
 ```bash
 python vis_vive_realsense_glove_dataset.py demo_test
 ```
-> ![alt text](image-5.png)
+> ![alt text](image-6.png)
+>
+
+
+在SO—101上复现采集的数据
+--------------------------------------------------------
+1. 相对位移
+* tracker位置: tracker[i] - tracker[0]
+*  起始位置:	通过 home_eef 手动设置
+* 核心公式: robot_pos = home_eef + scale × remap(Δtracker)
+  
+2. 绝对位置
+* tracker位置:	直接用 world 坐标中的绝对值
+* 起始位置:	通过 absolute_offset 标定
+* 核心公式: robot_pos = offset + remap(tracker_world_pos)
+
+方案1: 使用与上一帧的相对位移
+---------------------------------------------------------
+* 项目结构
+   * config.yaml	所有可调参数（scale、URDF路径、fps、滤波等）
+   * data_loader.py	加载3364帧 + 缺帧补全 + 低通滤波
+   * transform_utils.py	Tracker相对位移 → 机器人末端目标位置
+   * so101_ik.py	ikpy封装，热启动IK求解
+   * gripper_utils.py	拇指-食指捏合距离 → 夹爪开合度
+   * replay_demo_so101.py	主脚本，含 --dry-run 模式
+
+```
+环境：
+conda activate lerobot
+cd DexCap/so101_replay
+
+注意： 要创建两个分开的机械臂校准文件
+```
+> 采集起始时tracker位置 = 机器人零位
+* 前期准备
+   * 读取零位末端坐标
+   > `python get_home_eef.py`
+   * 可视化tracker数据
+   > `visualize_tracker.py --arm left`
+   * 校准夹爪
+   > `python replay_demo_so101.py --calibrate`
+
+1. Step 2：干跑，观察 IK 输出是否合理
+` python replay_demo_so101.py --dry-run`
+
+1. Step 3：慢速实机（config.yaml 改 dry_run: false）
+`python replay_demo_so101.py --speed 0.3 `
+
+1. 全速
+`python replay_demo_so101.py --speed 1.0 `
+
+方案2: 使用与胸前tracker的相对位置
+---------------------------------------------------------
+ > 左右tracker相对于胸腔tracker的位置 = 机械臂的相对移动
+ * 优点：不受到人移动的影响
+ > mac: python vis_vive_realsense_glove_dataset.py 4_20
+
+ 方案3: 与tracker进行坐标对齐，直接使用相同坐标
+---------------------------------------------------------
+
