@@ -1,5 +1,6 @@
 **/__pycache__
 **/trained_models
+**/outputs
 *.egg-info
 *.idea
 
@@ -7,5 +8,7 @@
 STEP1_collect_data_202408updates/demo_test/
 STEP1_collect_data_202408updates/4_17/
 STEP1_collect_data_202408updates/4_20/
+so101_lerobot/dataset/
+so101_train/dataset.hdf5
 
 

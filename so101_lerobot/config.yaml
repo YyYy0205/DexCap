@@ -1,0 +1,33 @@
+# ── LeRobot 数据集构建配置 ────────────────────────────────────────
+# 输出：HuggingFace LeRobotDataset 格式（parquet + mp4 视频）
+
+# 仓库标识（本地数据集也需要，格式 "user/name"）
+repo_id: "local/so101_dexcap"
+
+# 输出根目录（相对本目录）
+output_root: "./dataset"
+
+# 采集帧率
+fps: 15
+
+# 引用 replay 配置（复用坐标变换、IK、滤波等参数）
+replay_config: "../so101_replay/config.yaml"
+
+# 每个演示目录 → 一个 episode
+# 多个 demo 都会写到同一个 LeRobotDataset，每个 demo 是独立 episode
+demo_dirs:
+  - "../STEP1_collect_data_202408updates/4_20/data"
+  # - "../STEP1_collect_data_202408updates/4_17/data"
+
+# 每个 episode 的任务描述（文本）
+task: "Dual-arm SO-101 manipulation from DexCap teleop"
+
+# 动作超前帧数：action[i] = eef[i+gap] - eef[i]
+action_gap: 1
+
+# 图像尺寸 [H, W]，null 保持原始分辨率
+image_size: [240, 320]
+
+# 是否编码为视频（true=mp4，false=逐帧jpg）
+# 视频占用小但解码慢；图像占用大但随机访问快
+use_videos: true

@@ -14,8 +14,8 @@
    * 原流程：人手 21 关节 xyz → PyBullet IK → LEAP Hand 关节角度 → robomimic obs/actions
 
 - [x]  **控制机器人**
-- [ ]  模仿学习
-   * ROBOMIMIC 格式
+- [ ]  **模仿学习（robomimic BC / BC-RNN）**
+
 
 ## 难点
 
@@ -51,9 +51,14 @@
    * `dataset_utils.py` 读取原始数据，转换为末端位姿
    * `utils.py` 针对偏移的映射
    
-4. STEP3：策略训练
-   * 基于 robomimic 框架， 10+ 种遗传算法
-      > BC / BCQ / CQL / IQL / TD3+BC / HBC / IRIS / GL / BC-Transformer / Diffusion Policy ← 默认推荐
+4. STEP3：策略训练（`so101_train/`）
+   * `build_dataset.py` 把录制数据转为 robomimic HDF5（10D动作）
+   * `config_train.yaml` 数据集构建+部署参数
+   * `bc_so101.json` robomimic BC-MLP 训练配置
+   * `bc_rnn_so101.json` robomimic BC-RNN 训练配置（推荐）
+   * `train_so101.py` 训练入口：`python train_so101.py --algo rnn`
+   * `env_real_so101.py` 实机推理环境（robomimic EnvBase接口）
+   * `run_policy.py` 部署推理：加载checkpoint → 控制真实SO-101
 
 ## 数据格式
 ### 原始数据格式
@@ -233,10 +238,17 @@ demo_test/
 ### 3. 可视化数据
 
 ```bash
+可视化 所有数据：
 python vis_vive_realsense_glove_dataset.py demo_test
 ```
 > ![alt text](image-6.png)
-
+```bash
+可视化 2D color.png数据：
+conda activate lerobot
+cd so101_replay
+python replay_color.py 
+```
+> ![alt text](image-8.png)
 
 ## 在SO—101上复现采集的数据
 
@@ -297,4 +309,62 @@ cd DexCap/so101_replay
 
 模仿学习训练
 ---------------------------------------------------------
-1. 
+   * 数据转换 `python build_dataset.py`
+   * 数据集：`so101_train/dataset.hdf5`（626帧，10D动作）
+      > 4_20HDF5--(626 frames, 10D actions, RGB image)
+   * 组成：
+      * bc_so101.json	robomimic BC-MLP training config (fast baseline)
+      * bc_rnn_so101.json	robomimic BC-RNN config (recommended for sequential tasks)
+      * train_so101.py	Training entry point — handles absolute path resolution
+      * run_policy.py	Deploy trained checkpoint on real SO-101
+
+   * 训练：
+      * `cd so101_train && python train_so101.py --algo rnn` # BC-RNN, 600 epochs
+      * `python train_so101.py --algo bc `  # BC-MLP, 500 epochs (faster)
+      * `python train_so101.py --no-image
+      *  ` # low-dim only, for quick sanity check
+
+   * 推理：`python run_policy.py --checkpoint trained_models/.../model_epoch_500.pth`
+
+* 建议：
+  * 先录 20–30 demos，用 BC-RNN 跑 600 epochs，看 training loss 能否降到 0.001 以下。如果能，再做实机测试。如果 loss 不降，说明数据不够多或者轨迹质量有问题（抖动太大/不一致）。
+
+* 采集图像为人手，推理时是机械臂
+  * 先跑 --no-image 验证动作轨迹正确，之后再加图像。如果加了图像效果变差，说明域偏移是主要瓶颈，再考虑上面的方法。
+
+* Dexcap 做法
+  * 第一步：把图像里的人手遮掉（mask_image）
+  * 第二步：主要用点云，不用图像
+  * 第三步：点云里的人手换成 LEAP Hand 网格
+
+Lerobot
+-------------------------------------------------------------
+1. 数据转换为lerobot 格式
+* `cd so101_lerobot`
+* 首次生成 `python build_lerobot_dataset.py`
+* 重新生成（覆盖已有数据集）`python build_lerobot_dataset.py --force`
+
+2. 训练
+* ACT（推荐，适合双臂长序列）
+> python train_lerobot.py --policy act --steps 20000 --batch 8 --device cuda
+
+> ACT 参数 --chunk-size 32：一次预测 32 帧动作，小数据建议用 32 而非默认 100
+
+* Diffusion（精细操作好，但慢）
+> python train_lerobot.py --policy diffusion --steps 50000 --batch 16 --device cuda
+
+> Diffusion 参数 --horizon 16 --n-action-steps 8：预测 16 步动作，执行前 8 步. 推理慢（100 步 denoising），必须 GPU
+
+3. 推理
+* 干跑
+   ```
+   python eval_lerobot.py \
+      --checkpoint outputs/act_so101/checkpoints/last/pretrained_model \
+      --dry-run --horizon 5
+   ```
+* 实机部署
+   ```
+   python eval_lerobot.py \
+      --checkpoint outputs/act_so101/checkpoints/last/pretrained_model \
+      --horizon 400 --episodes 3
+   ```

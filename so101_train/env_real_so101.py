@@ -47,12 +47,15 @@ class EnvRealSO101(_BASE):
         train_cfg: dict,
         camera_name: str = "agentview",
         render: bool = False,
+        replay_cfg_dir: Path | None = None,
     ):
         self._rcfg  = replay_cfg
         self._tcfg  = train_cfg
         self._camera = camera_name
 
-        urdf = Path(__file__).parent.parent / replay_cfg["ik"]["urdf_path"]
+        # URDF 路径相对 replay 配置文件所在目录解析（默认 so101_replay/）
+        urdf_base = replay_cfg_dir or (Path(__file__).parent.parent / "so101_replay")
+        urdf = (urdf_base / replay_cfg["ik"]["urdf_path"]).resolve()
         self._ik_r = SO101IK(str(urdf))
         self._ik_l = SO101IK(str(urdf))
 
@@ -88,12 +91,13 @@ class EnvRealSO101(_BASE):
 
     @classmethod
     def from_config(cls, train_config_path: str) -> "EnvRealSO101":
-        path = Path(train_config_path)
+        path = Path(train_config_path).resolve()
         with open(path) as f:
             tcfg = yaml.safe_load(f)
-        with open(path.parent / tcfg["replay_config"]) as f:
+        replay_cfg_path = (path.parent / tcfg["replay_config"]).resolve()
+        with open(replay_cfg_path) as f:
             rcfg = yaml.safe_load(f)
-        return cls(rcfg, tcfg)
+        return cls(rcfg, tcfg, replay_cfg_dir=replay_cfg_path.parent)
 
     # ──────────────────────────────────────────────────────────────
     # 连接 / 断开
@@ -206,10 +210,9 @@ class EnvRealSO101(_BASE):
 
     @staticmethod
     def _yaw_to_quat(yaw: float) -> np.ndarray:
-        """yaw (rad) → wxyz quaternion"""
-        from scipy.spatial.transform import Rotation
-        q = Rotation.from_euler("z", yaw).as_quat()  # xyzw
-        return np.roll(q, 1).astype(np.float32)       # wxyz
+        """yaw (rad) → wxyz quaternion，绕 Z 轴旋转。"""
+        half = float(yaw) / 2.0
+        return np.array([np.cos(half), 0.0, 0.0, np.sin(half)], dtype=np.float32)
 
     @staticmethod
     def _build_action(joints_r, joints_l, g_r, g_l) -> dict:
@@ -276,6 +279,21 @@ class EnvRealSO101(_BASE):
     @classmethod
     def create_for_data_processing(cls, *args, **kwargs):
         raise NotImplementedError
+
+    # ── robomimic EnvBase 抽象方法的最小 stub 实现 ────────────────
+    def action_dimension(self): return 10
+    def get_state(self):        return {}
+    def get_reward(self):       return 0.0
+    def get_goal(self):         return {}
+    def set_goal(self, **kw):   pass
+    def is_done(self):          return False
+    def is_success(self):       return {"task": False}
+    def reset_to(self, state):  return self.reset()
+    def render(self, **kw):     return None
+
+    @property
+    def rollout_exceptions(self):
+        return ()
 
 
 if __name__ == "__main__":

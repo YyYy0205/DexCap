@@ -42,9 +42,12 @@ def load_config(path):
 
 
 def yaw_to_quat_wxyz(yaw_array):
-    """(N,) yaw 角 → (N,4) 四元数 wxyz"""
-    q_xyzw = Rotation.from_euler("z", yaw_array).as_quat()  # scipy: xyzw
-    return np.roll(q_xyzw, 1, axis=1)                        # → wxyz
+    """(N,) yaw 角 → (N,4) 四元数 wxyz，绕 Z 轴旋转。"""
+    half = np.asarray(yaw_array, dtype=np.float32) / 2.0
+    q = np.zeros((len(half), 4), dtype=np.float32)
+    q[:, 0] = np.cos(half)   # w
+    q[:, 3] = np.sin(half)   # z
+    return q
 
 
 def build_demo(demo_dir, replay_cfg, action_gap, img_size):
@@ -114,8 +117,10 @@ def build_demo(demo_dir, replay_cfg, action_gap, img_size):
 
     dpos_r = delta_pad(eef_pos_r, action_gap)   # (N, 3)
     dyaw_r = delta_pad(eef_yaw_r[:, None], action_gap).squeeze(1)  # (N,)
+    dyaw_r = np.arctan2(np.sin(dyaw_r), np.cos(dyaw_r))  # 环绕到 [-π, π]
     dpos_l = delta_pad(eef_pos_l, action_gap)
     dyaw_l = delta_pad(eef_yaw_l[:, None], action_gap).squeeze(1)
+    dyaw_l = np.arctan2(np.sin(dyaw_l), np.cos(dyaw_l))
 
     # 夹爪用绝对目标值（超前 gap 帧）
     grip_r_act = np.concatenate([grip_r[action_gap:], np.full(action_gap, grip_r[-1])])
