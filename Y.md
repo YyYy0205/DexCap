@@ -207,7 +207,7 @@ python redis_glove_server.py
 终端2:
 conda activate dexcap
 cd DexCap/STEP1_collect_data_202408updates
-python vive_realsense_glove_datacollection.py NAME_OF_DEMO
+python vive_realsense_glove_datacollection_headless.py NAME_OF_DEMO
 ```
 ![alt text](image.png)
 
@@ -321,8 +321,9 @@ cd DexCap/so101_replay
    * 训练：
       * `cd so101_train && python train_so101.py --algo rnn` # BC-RNN, 600 epochs
       * `python train_so101.py --algo bc `  # BC-MLP, 500 epochs (faster)
-      * `python train_so101.py --no-image
-      *  ` # low-dim only, for quick sanity check
+      * `python train_so101.py --no-image`  # low-dim only, for quick sanity check
+    > BC（Behavior Cloning，行为克隆），最经典也最简单的模仿学习算法。
+         * 优点：简单直接，训练稳定。不需要环境 / reward 信号
 
    * 推理：`python run_policy.py --checkpoint trained_models/.../model_epoch_500.pth`
 
@@ -344,7 +345,7 @@ Lerobot
 * 首次生成 `python build_lerobot_dataset.py`
 * 重新生成（覆盖已有数据集）`python build_lerobot_dataset.py --force`
 
-2. 训练
+1. 训练
 * ACT（推荐，适合双臂长序列）
 > python train_lerobot.py --policy act --steps 20000 --batch 8 --device cuda
 

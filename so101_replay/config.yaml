@@ -1,12 +1,12 @@
 data:
-  demo_dir: "../STEP1_collect_data_202408updates/4_20/data"
+  demo_dir: "../STEP1_collect_data_202408updates/4_24_9/data"
   fps: 15
 
 ik:
   urdf_path: "../SO-ARM100/Simulation/SO101/so101_new_calib.urdf"
   # 中间位
-  home_eef_right: [0.30, 0.012, 0.150]
-  home_eef_left:  [0.30, 0.01, 0.180]
+  home_eef_right: [0.30, 0.012, 0.130]
+  home_eef_left:  [0.30, 0.01, 0.110]
 
 transform:
   scale: 0.6

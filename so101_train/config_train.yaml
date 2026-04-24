@@ -6,8 +6,26 @@ replay_config: "../so101_replay/config.yaml"
 
 # 演示目录列表（可添加多个录制）
 demo_dirs:
-  - "../STEP1_collect_data_202408updates/4_20/data"
-  # - "../STEP1_collect_data_202408updates/4_17/data"
+  - "../STEP1_collect_data_202408updates/4_24_1/data"
+  - "../STEP1_collect_data_202408updates/4_24_2/data"
+  - "../STEP1_collect_data_202408updates/4_24_3/data"
+  - "../STEP1_collect_data_202408updates/4_24_4/data"
+  - "../STEP1_collect_data_202408updates/4_24_5/data"
+  - "../STEP1_collect_data_202408updates/4_24_6/data"
+  - "../STEP1_collect_data_202408updates/4_24_7/data"
+  - "../STEP1_collect_data_202408updates/4_24_8/data"
+  - "../STEP1_collect_data_202408updates/4_24_9/data"
+  - "../STEP1_collect_data_202408updates/4_24_10/data"
+  - "../STEP1_collect_data_202408updates/4_24_11/data"
+  - "../STEP1_collect_data_202408updates/4_24_12/data"
+  - "../STEP1_collect_data_202408updates/4_24_13/data"
+  - "../STEP1_collect_data_202408updates/4_24_14/data"
+  - "../STEP1_collect_data_202408updates/4_24_15/data"
+  - "../STEP1_collect_data_202408updates/4_24_16/data"
+  - "../STEP1_collect_data_202408updates/4_24_17/data"
+  - "../STEP1_collect_data_202408updates/4_24_18/data"
+  - "../STEP1_collect_data_202408updates/4_24_19/data"
+  - "../STEP1_collect_data_202408updates/4_24_20/data" 
 
 # 动作超前帧数：action[i] = eef[i+gap] - eef[i]
 # 1 = 预测下一帧，大于1用于 action chunking（如 ACT/Diffusion Policy）

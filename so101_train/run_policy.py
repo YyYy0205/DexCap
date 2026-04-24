@@ -44,12 +44,10 @@ def run_rollout(policy, env, horizon, dry_run):
 
     total_reward = 0.0
     for step in range(horizon):
-        # robomimic policy 期望 obs 为 {key: (1, dim)} 格式（batch dim=1）
-        obs_batch = {k: torch.from_numpy(v[None]).float() for k, v in obs.items()
-                     if not isinstance(v, np.ndarray) or v.ndim >= 1}
-
+        # algo.__call__ 内部调用 _prepare_observation：to_tensor + to_batch + to_device
+        # 直接传原始 numpy obs dict（无 batch dim），由框架自动处理
         with torch.no_grad():
-            action = policy(ob=obs_batch)
+            action = policy(ob=obs)   # returns numpy array already
 
         action = np.array(action).flatten()
 
