@@ -1,12 +1,12 @@
 data:
-  demo_dir: "../STEP1_collect_data_202408updates/4_24_9/data"
+  demo_dir: "../STEP1_collect_data_202408updates/4_28/4_28_18/data"
   fps: 15
 
 ik:
   urdf_path: "../SO-ARM100/Simulation/SO101/so101_new_calib.urdf"
   # 中间位
-  home_eef_right: [0.30, 0.012, 0.130]
-  home_eef_left:  [0.30, 0.01, 0.110]
+  home_eef_right: [0.30, 0.012, 0.100]
+  home_eef_left:  [0.30, 0.012, 0.070]
 
 transform:
   scale: 0.6
@@ -27,8 +27,8 @@ transform:
   left_axis_sign:   [-1, 1, 1]   # 待验证每轴方向
 
 gripper:
-  dist_open:   0.10   # 用 calibrate_gripper() 统计后替换
-  dist_closed: 0.06
+  dist_open:   0.0935   # 用 calibrate_gripper() 统计后替换
+  dist_closed: 0.0542
 
 filter:
   cutoff_hz: 2.0

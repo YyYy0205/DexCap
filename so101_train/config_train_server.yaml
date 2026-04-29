@@ -1,0 +1,38 @@
+output: "dataset.hdf5"
+
+replay_config: "../so101_replay/config.yaml"
+
+demo_dirs:
+  - "../STEP1_collect_data_202408updates/4_28/4_28_1/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_2/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_3/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_4/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_5/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_6/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_7/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_8/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_9/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_10/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_11/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_12/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_13/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_14/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_15/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_16/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_17/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_18/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_19/data"
+  - "../STEP1_collect_data_202408updates/4_28/4_28_20/data"
+
+action_gap: 1
+
+image_size: [240, 320]
+
+action_scale:
+  dpos:  1.0
+  dyaw:  1.0
+  grip:  1.0
+
+deploy:
+  control_freq: 15
+  speed_scale:  0.5

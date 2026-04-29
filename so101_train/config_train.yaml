@@ -1,5 +1,5 @@
 # ── 数据集构建配置 ────────────────────────────────────────────────
-output: "dataset.hdf5"
+output: "dataset.hdf5da
 
 # 引用 replay 配置（复用坐标变换、IK、滤波等参数）
 replay_config: "../so101_replay/config.yaml"
@@ -37,8 +37,8 @@ image_size: [240, 320]
 # 动作缩放范围（供 robomimic 归一化用）
 # 训练时策略输出 [-1,1]，推理时乘以此值还原真实单位（米/弧度）
 action_scale:
-  dpos:  0.05    # 单步最大位移 5cm
-  dyaw:  0.3     # 单步最大偏航 0.3 rad
+  dpos:  1.0     # 模型输出已是原始米单位，不再缩放
+  dyaw:  1.0     # 模型输出已是原始弧度单位，不再缩放
   grip:  1.0     # 夹爪 [0,1]
 
 # ── 实机部署配置（env_real_so101.py 使用）────────────────────────

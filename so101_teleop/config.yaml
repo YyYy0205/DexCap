@@ -1,0 +1,42 @@
+# ── 控制频率 ──────────────────────────────────────────────────────
+control_freq: 15   # Hz（建议 10-20，与采集频率保持一致）
+
+# ── IK（复用 so101_replay 的 URDF）──────────────────────────────
+ik:
+  urdf_path: "SO-ARM100/Simulation/SO101/so101_new_calib.urdf"
+  home_eef_right: [0.30, 0.012, 0.130]   # 右臂零位末端（米，机器人 base frame）
+  home_eef_left:  [0.30, 0.01,  0.110]   # 左臂零位末端
+
+# ── 坐标变换（与 so101_replay/config.yaml 保持一致）──────────────
+transform:
+  scale: 0.6                          # Tracker 位移缩放比（人手范围 → 机械臂范围）
+  right_axis_remap: [2, 0, 1]         # robot_x=tracker[2], robot_y=tracker[0], robot_z=tracker[1]
+  right_axis_sign:  [-1, 1, 1]
+  left_axis_remap:  [2, 0, 1]
+  left_axis_sign:   [-1, 1, 1]
+
+# ── 工作空间安全边界（避免 IK 求解失败导致飞车）─────────────────
+workspace:
+  x: [0.10, 0.45]   # 前后（米）
+  y: [-0.35, 0.35]  # 左右
+  z: [0.05, 0.40]   # 上下
+
+# ── 夹爪标定 ─────────────────────────────────────────────────────
+gripper:
+  dist_open:   0.10   # 拇指-食指张开距离（米）→ 夹爪全开
+  dist_closed: 0.06   # 捏合距离（米）        → 夹爪全闭
+
+# ── 在线低通滤波（比回放截止频率高，保证遥操作响应性）──────────
+filter:
+  cutoff_hz: 4.0   # Hz（越低越平滑但延迟越大，建议 3-6）
+  order: 2
+
+# ── Redis（Rokoko 手套数据，由 redis_glove_server.py 写入）───────
+redis:
+  host: "localhost"
+  port: 6669
+
+# ── 机器人串口 ────────────────────────────────────────────────────
+robot:
+  port_right: "/dev/tty.usbmodem5B420765891"
+  port_left:  "/dev/tty.usbmodem5AAF2194591"

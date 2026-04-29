@@ -246,7 +246,7 @@ python vis_vive_realsense_glove_dataset.py demo_test
 可视化 2D color.png数据：
 conda activate lerobot
 cd so101_replay
-python replay_color.py 
+python replay_color.py --dir ../demo_test/data
 ```
 > ![alt text](image-8.png)
 
@@ -324,6 +324,10 @@ cd DexCap/so101_replay
       * `python train_so101.py --no-image`  # low-dim only, for quick sanity check
     > BC（Behavior Cloning，行为克隆），最经典也最简单的模仿学习算法。
          * 优点：简单直接，训练稳定。不需要环境 / reward 信号
+   * 服务器训练
+      * `nohup python train_so101.py --algo rnn --epochs 2000 --config config_train_server.yaml > train_4_28.log 2>&1 & `
+      > 修改：pretrained=true 原因：ImageNet 预训练的 ResNet18 能立刻提取有意义的视觉特征（边缘、形状、颜色）
+
 
    * 推理：`python run_policy.py --checkpoint trained_models/.../model_epoch_500.pth`
 
@@ -348,7 +352,11 @@ Lerobot
 1. 训练
 * ACT（推荐，适合双臂长序列）
 > python train_lerobot.py --policy act --steps 20000 --batch 8 --device cuda
-
+* 服务器训练ACT
+   ```
+   nohup python train_act_so101.py > train_act.log 2>&1 &
+   tail -f train_act.log
+   ```
 > ACT 参数 --chunk-size 32：一次预测 32 帧动作，小数据建议用 32 而非默认 100
 
 * Diffusion（精细操作好，但慢）
@@ -356,7 +364,7 @@ Lerobot
 
 > Diffusion 参数 --horizon 16 --n-action-steps 8：预测 16 步动作，执行前 8 步. 推理慢（100 步 denoising），必须 GPU
 
-3. 推理
+1. 推理
 * 干跑
    ```
    python eval_lerobot.py \
@@ -369,3 +377,23 @@ Lerobot
       --checkpoint outputs/act_so101/checkpoints/last/pretrained_model \
       --horizon 400 --episodes 3
    ```
+
+## 使用手套遥操 SO-101
+> 环境： NUC conda dexcap
+> 还未实现
+
+```
+cd so101_teleop
+
+  # 终端1: 启动手套数据服务
+  python ../STEP1_collect_data/../STEP1_collect_data/redis_glove_server.py
+
+  # 终端2：干跑
+  python teleop_so101.py --dry-run
+
+  # 终端2: 不用手套，保持夹爪半开
+  python teleop_so101.py --no-glove --dry-run
+
+  # 终端2: 实机
+  python teleop_so101.py
+```
