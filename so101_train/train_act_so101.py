@@ -261,6 +261,8 @@ def main():
     ap.add_argument("--no-image",   action="store_true")
     ap.add_argument("--device",     default="auto")
     ap.add_argument("--save-every", type=int,   default=200)
+    ap.add_argument("--resume",     default=None,
+                    help="从指定 .pth checkpoint 继续训练，例如 act_so101/act_epoch_2000.pth")
     args = ap.parse_args()
 
     device    = ("cuda" if torch.cuda.is_available() else "cpu") \
@@ -306,13 +308,28 @@ def main():
 
     optimizer = torch.optim.AdamW(policy.parameters(), lr=args.lr, weight_decay=1e-4)
 
+    # ── 断点续训 ─────────────────────────────────────────────────
+    start_epoch = 1
+    if args.resume:
+        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
+        policy.load_state_dict(ckpt["model"])
+        optimizer.load_state_dict(ckpt["optimizer"])
+        start_epoch = ckpt["epoch"] + 1
+        # 用 checkpoint 里的归一化统计（保证一致性）
+        stats  = ckpt["stats"]
+        a_mean = torch.tensor(stats["a_mean"], device=device)
+        a_std  = torch.tensor(stats["a_std"],  device=device)
+        s_mean = torch.tensor(stats["s_mean"], device=device)
+        s_std  = torch.tensor(stats["s_std"],  device=device)
+        print(f"Resumed from epoch {ckpt['epoch']}  → continue from epoch {start_epoch}")
+
     # ── 输出目录 ─────────────────────────────────────────────────
     out_dir = HERE / "trained_models" / "act_so101"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ── 训练循环 ─────────────────────────────────────────────────
     print(f"\nStart training...\n")
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch, start_epoch + args.epochs):
         policy.train()
         tot = l1_sum = kl_sum = 0.0
         t0  = time.time()

@@ -358,6 +358,25 @@ Lerobot
    tail -f train_act.log
    ```
 > ACT 参数 --chunk-size 32：一次预测 32 帧动作，小数据建议用 32 而非默认 100
+* 继续训练
+   ```
+   python -u train_act_so101.py \
+    --resume trained_models/act_so101/act_epoch_2000.pth \
+    --epochs 2000 \
+    --chunk-size 30 \
+    --d-model 256 \
+    --n-dec 4 \
+    --batch 64 \
+    2>&1 | tee train_act_continue.log
+   ```
+* 真机验证
+   ```
+    conda run -n lerobot python run_act_policy.py \
+    --checkpoint act_so101/act_epoch_2000.pth \
+    --show-camera \
+    --exec-steps 10 \
+    --horizon 500
+   ```
 
 * Diffusion（精细操作好，但慢）
 > python train_lerobot.py --policy diffusion --steps 50000 --batch 16 --device cuda
@@ -373,9 +392,16 @@ Lerobot
    ```
 * 实机部署
    ```
+   Lerobot：
    python eval_lerobot.py \
-      --checkpoint outputs/act_so101/checkpoints/last/pretrained_model \
-      --horizon 400 --episodes 3
+     --checkpoint ../so101_train/act_so101/act_epoch_2000.pth \
+     --display --horizon 500
+
+   conda run -n lerobot python run_act_policy.py \
+    --checkpoint act_so101/act_epoch_2000.pth \
+    --show-camera \
+    --exec-steps 10 \
+    --horizon 500
    ```
 
 ## 使用手套遥操 SO-101

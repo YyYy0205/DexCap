@@ -1,5 +1,5 @@
 # ── 数据集构建配置 ────────────────────────────────────────────────
-output: "dataset.hdf5da
+output: "dataset.hdf5"
 
 # 引用 replay 配置（复用坐标变换、IK、滤波等参数）
 replay_config: "../so101_replay/config.yaml"
@@ -40,6 +40,13 @@ action_scale:
   dpos:  1.0     # 模型输出已是原始米单位，不再缩放
   dyaw:  1.0     # 模型输出已是原始弧度单位，不再缩放
   grip:  1.0     # 夹爪 [0,1]
+
+# ── 相机配置 ──────────────────────────────────────────────────────
+camera:
+  type: "opencv"        # "opencv"（普通USB摄像头）或 "realsense"
+  device_id: 0          # opencv: 摄像头编号（0=默认，1=第二个...）
+  width: 640            # 采集分辨率（会自动 resize 到 image_size）
+  height: 480
 
 # ── 实机部署配置（env_real_so101.py 使用）────────────────────────
 deploy:

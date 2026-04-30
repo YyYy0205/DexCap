@@ -27,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import rerun as rr
 
 HERE = Path(__file__).parent.resolve()
 
@@ -40,24 +41,105 @@ from lerobot.policies.factory import get_policy_class, make_pre_post_processors
 from lerobot.configs.policies import PreTrainedConfig
 
 
-def load_policy(ckpt_dir: Path, device: str):
-    """
-    加载 LeRobot 训练 checkpoint。
-    ckpt_dir 应该是 pretrained_model/ 子目录（含 config.json, model.safetensors 等）。
-    """
-    cfg = PreTrainedConfig.from_pretrained(ckpt_dir)
-    cfg.device = device
+# ─────────────────────────────────────────────────────────────────────────────
+# 自定义 ACT (.pth) 的 LeRobot 兼容包装层
+# ─────────────────────────────────────────────────────────────────────────────
 
+class CustomACTWrapper:
+    """
+    把 train_act_so101.py 训练出的 .pth checkpoint 包装成
+    LeRobot policy 接口（select_action / config.input_features）。
+    内置动作 buffer：每 chunk_size 步推理一次，中间直接取 buffer。
+    """
+
+    class _Config:
+        def __init__(self, img_shape=(3, 240, 320)):
+            class _F:
+                def __init__(self, shape): self.shape = shape
+            self.input_features = {
+                "observation.state":      _F((14,)),
+                "observation.images.top": _F(img_shape),
+            }
+
+    def __init__(self, ckpt_path: str, device: str):
+        from train_act_so101 import ACTPolicy
+
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+        sa   = ckpt["args"]
+        stats = ckpt["stats"]
+        d_model = sa.get("d_model", 256)
+
+        self._policy = ACTPolicy(
+            state_dim=14, action_dim=10,
+            chunk_size=sa["chunk_size"],
+            latent_dim=32,
+            d_model=d_model,
+            n_heads=4 if d_model <= 256 else 8,
+            n_enc=4,
+            n_dec=sa.get("n_dec", 4),
+            use_image=not sa.get("no_image", False),
+            kl_weight=sa.get("kl_weight", 10.0),
+        ).to(device)
+        self._policy.load_state_dict(ckpt["model"])
+        self._policy.eval()
+
+        dev = torch.device(device)
+        self._a_mean = torch.tensor(stats["a_mean"], device=dev)
+        self._a_std  = torch.tensor(stats["a_std"],  device=dev)
+        self._s_mean = torch.tensor(stats["s_mean"], device=dev)
+        self._s_std  = torch.tensor(stats["s_std"],  device=dev)
+        self._use_image = not sa.get("no_image", False)
+        self._buffer: list = []
+        self.config = self._Config(img_shape=(3, 240, 320))
+
+        print(f"CustomACT loaded: chunk={sa['chunk_size']}  "
+              f"d_model={d_model}  image={self._use_image}")
+
+    def reset(self):
+        self._buffer.clear()
+
+    @torch.no_grad()
+    def select_action(self, batch: dict) -> torch.Tensor:
+        """每步调用一次，buffer 空时重新推理整个 chunk。"""
+        if not self._buffer:
+            state = batch["observation.state"]           # (B, 14)
+            state_n = (state - self._s_mean) / self._s_std
+
+            image = None
+            if self._use_image and "observation.images.top" in batch:
+                image = batch["observation.images.top"]  # (B, 3, H, W) float [0,1]
+
+            chunk = self._policy.predict(state_n, image)        # (B, T, 10)
+            chunk = chunk * self._a_std + self._a_mean          # 反归一化
+            for k in range(chunk.shape[1]):
+                self._buffer.append(chunk[:, k, :])             # 存 (B, 10)
+
+        return self._buffer.pop(0)   # (B, 10)
+
+
+def load_policy(ckpt_path: str, device: str):
+    """
+    自动检测 checkpoint 类型：
+      - .pth 文件  → 自定义 ACT（CustomACTWrapper）
+      - 目录       → LeRobot 格式（safetensors）
+    返回 (policy, pre_fn, post_fn)，自定义模型的 pre/post 为恒等映射。
+    """
+    path = Path(ckpt_path)
+    identity = lambda x: x   # noqa: E731
+
+    if path.suffix == ".pth":
+        policy = CustomACTWrapper(str(path), device)
+        return policy, identity, identity
+
+    # LeRobot checkpoint 目录
+    cfg = PreTrainedConfig.from_pretrained(path)
+    cfg.device = device
     PolicyCls = get_policy_class(cfg.type)
-    policy = PolicyCls.from_pretrained(ckpt_dir, config=cfg)
+    policy = PolicyCls.from_pretrained(path, config=cfg)
     policy.to(device)
     policy.eval()
-
-    preprocessor, postprocessor = make_pre_post_processors(
-        policy_cfg=cfg,
-        pretrained_path=ckpt_dir,
-    )
-    return policy, preprocessor, postprocessor
+    pre, post = make_pre_post_processors(policy_cfg=cfg, pretrained_path=path)
+    return policy, pre, post
 
 
 def obs_to_batch(obs: dict, device: str) -> dict:
@@ -88,13 +170,18 @@ def obs_to_batch(obs: dict, device: str) -> dict:
     return batch
 
 
-def run_episode(policy, pre, post, env, horizon, dry_run, device):
+def run_episode(policy, pre, post, env, horizon, dry_run, device, display: bool = False):
     obs = env.reset()
     if hasattr(policy, "reset"):
         policy.reset()
 
     # 推断策略期望的图像尺寸（如训练带图像而推理时没相机，用黑图占位）
     needs_image = any(k.startswith("observation.images.") for k in policy.config.input_features)
+
+    action_names = [
+        "r_dx", "r_dy", "r_dz", "r_dyaw", "r_grip",
+        "l_dx", "l_dy", "l_dz", "l_dyaw", "l_grip",
+    ]
 
     for step in range(horizon):
         t0 = time.time()
@@ -105,6 +192,8 @@ def run_episode(policy, pre, post, env, horizon, dry_run, device):
             obs["agentview_image"] = np.zeros((h, w, c), dtype=np.uint8)
         batch = obs_to_batch(obs, device)
         batch = pre(batch)
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v
+                 for k, v in batch.items()}
 
         with torch.no_grad():
             action = policy.select_action(batch)
@@ -112,10 +201,17 @@ def run_episode(policy, pre, post, env, horizon, dry_run, device):
         action_out = post(action)
         action_np = action_out.squeeze(0).cpu().numpy()
 
+        # ── Rerun 可视化 ────────────────────────────────────────
+        if display:
+            rr.set_time("step", sequence=step)
+            if "agentview_image" in obs and obs["agentview_image"] is not None:
+                rr.log("camera/top", rr.Image(obs["agentview_image"]))
+            for i, (name, val) in enumerate(zip(action_names, action_np)):
+                rr.log(f"action/{name}", rr.Scalars(float(val)))
+
         if dry_run:
             if step % 10 == 0:
                 print(f"[{step:04d}] action={np.round(action_np, 3)}")
-            # 干跑时用零观测假装环境仍在运行
             obs = {k: v.copy() if hasattr(v, 'copy') else v for k, v in obs.items()}
         else:
             obs, _, done, _ = env.step(action_np)
@@ -139,6 +235,8 @@ def main():
     ap.add_argument("--horizon",    type=int, default=400)
     ap.add_argument("--episodes",   type=int, default=1)
     ap.add_argument("--dry-run",    action="store_true", help="不连机器人")
+    ap.add_argument("--display",    action="store_true",
+                    help="用 Rerun 实时显示摄像头画面和动作曲线")
     ap.add_argument("--device",     default="auto",
                     help="cpu / cuda / mps / auto")
     args = ap.parse_args()
@@ -147,6 +245,11 @@ def main():
         args.device = ("cuda" if torch.cuda.is_available() else
                        "mps"  if torch.backends.mps.is_available() else "cpu")
     print(f"Device: {args.device}")
+
+    # ── 初始化 Rerun ─────────────────────────────────────────────
+    if args.display:
+        rr.init("so101_eval", spawn=True)   # 自动弹出 Rerun 窗口
+        print("Rerun viewer launched.")
 
     ckpt_dir = Path(args.checkpoint).resolve()
     print(f"Loading policy from: {ckpt_dir}")
@@ -163,7 +266,8 @@ def main():
         for ep in range(args.episodes):
             print(f"\n=== Episode {ep + 1}/{args.episodes} ===")
             steps = run_episode(policy, pre, post, env, args.horizon,
-                                args.dry_run, args.device)
+                                args.dry_run, args.device,
+                                display=args.display)
             print(f"  Finished in {steps} steps")
     finally:
         env.close()

@@ -125,7 +125,11 @@ class EnvRealSO101(_BASE):
                 pass
         if self._camera_dev is not None:
             try:
-                self._camera_dev.stop()
+                cam_type = self._tcfg.get("camera", {}).get("type", "opencv")
+                if cam_type == "realsense":
+                    self._camera_dev.stop()
+                else:
+                    self._camera_dev.release()
             except Exception:
                 pass
 
@@ -229,32 +233,58 @@ class EnvRealSO101(_BASE):
         """抓取相机图像（未接相机时返回 None）。"""
         if self._camera_dev is None:
             return None
+        import cv2
+        cam_type = self._tcfg.get("camera", {}).get("type", "opencv")
+        img_size = self._tcfg.get("image_size")  # [H, W]
+
         try:
-            import pyrealsense2 as rs
-            frames = self._camera_dev.wait_for_frames()
-            color  = frames.get_color_frame()
-            if not color:
-                return None
-            import numpy as np
-            img = np.asanyarray(color.get_data())
-            img_size = self._tcfg.get("image_size")
+            if cam_type == "realsense":
+                import pyrealsense2 as rs
+                frames = self._camera_dev.wait_for_frames()
+                color  = frames.get_color_frame()
+                if not color:
+                    return None
+                img = np.asanyarray(color.get_data())   # RGB already
+            else:
+                ret, img = self._camera_dev.read()       # BGR
+                if not ret:
+                    return None
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
             if img_size:
-                import cv2
                 img = cv2.resize(img, (img_size[1], img_size[0]))
             return img
         except Exception:
             return None
 
     def connect_camera(self):
-        """可选：连接 RealSense 相机。"""
+        """连接相机，类型由 config 的 camera.type 决定。"""
+        cam_cfg  = self._tcfg.get("camera", {})
+        cam_type = cam_cfg.get("type", "opencv")
         try:
-            import pyrealsense2 as rs
-            pipeline = rs.pipeline()
-            config   = rs.config()
-            config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
-            pipeline.start(config)
-            self._camera_dev = pipeline
-            print("RealSense camera connected.")
+            if cam_type == "realsense":
+                import pyrealsense2 as rs
+                pipeline = rs.pipeline()
+                cfg = rs.config()
+                w = cam_cfg.get("width", 640)
+                h = cam_cfg.get("height", 480)
+                cfg.enable_stream(rs.stream.color, w, h, rs.format.rgb8, 30)
+                pipeline.start(cfg)
+                self._camera_dev = pipeline
+                print(f"RealSense camera connected ({w}x{h}).")
+            else:
+                import cv2
+                dev_id = cam_cfg.get("device_id", 0)
+                cap = cv2.VideoCapture(dev_id)
+                if not cap.isOpened():
+                    print(f"[WARN] Cannot open camera device_id={dev_id}")
+                    return
+                w = cam_cfg.get("width", 640)
+                h = cam_cfg.get("height", 480)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH,  w)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+                self._camera_dev = cap
+                print(f"OpenCV camera connected (device_id={dev_id}, {w}x{h}).")
         except Exception as e:
             print(f"[WARN] Camera not available: {e}")
 
