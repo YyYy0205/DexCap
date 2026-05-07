@@ -11,9 +11,9 @@ ik:
 transform:
   scale: 0.6                          # Tracker 位移缩放比（人手范围 → 机械臂范围）
   right_axis_remap: [2, 0, 1]         # robot_x=tracker[2], robot_y=tracker[0], robot_z=tracker[1]
-  right_axis_sign:  [-1, 1, 1]
+  right_axis_sign:  [1, 1, 1]
   left_axis_remap:  [2, 0, 1]
-  left_axis_sign:   [-1, 1, 1]
+  left_axis_sign:   [1, 1, 1]
 
 # ── 工作空间安全边界（避免 IK 求解失败导致飞车）─────────────────
 workspace:

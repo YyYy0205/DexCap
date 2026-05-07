@@ -3,6 +3,7 @@
 **/outputs
 *.egg-info
 *.idea
+*.DS_Store
 
 # 忽略数据（最重要）
 so101_lerobot/dataset/

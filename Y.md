@@ -13,8 +13,10 @@
 - [x]  **IK**（SO-101）
    * 原流程：人手 21 关节 xyz → PyBullet IK → LEAP Hand 关节角度 → robomimic obs/actions
 
-- [x]  **控制机器人**
-- [ ]  **模仿学习（robomimic BC / BC-RNN）**
+- [x]  **机械臂replay采集数据**
+- [x]  **模仿学习（robomimic BC / BC-RNN）**
+- [x]  **ACT训练**
+- [x]  **手套遥操作** 5.7
 
 
 ## 难点
@@ -349,15 +351,27 @@ Lerobot
 * 首次生成 `python build_lerobot_dataset.py`
 * 重新生成（覆盖已有数据集）`python build_lerobot_dataset.py --force`
 
-1. 训练
+2. 训练
 * ACT（推荐，适合双臂长序列）
-> python train_lerobot.py --policy act --steps 20000 --batch 8 --device cuda
+   ```
+   python train_lerobot.py 
+    --policy act \
+    --steps 20000 \
+    --batch 64 \
+    --device cuda
+   ```
 * 服务器训练ACT
    ```
-   nohup python train_act_so101.py > train_act.log 2>&1 &
-   tail -f train_act.log
+   python -u train_act_so101.py \
+    --chunk-size 30 \
+    --d-model 256 \ 
+    --n-dec 4 \    
+    --batch 64 \    
+    --epochs 2000 \    
+    2>&1 | tee train_act_log.txt
    ```
 > ACT 参数 --chunk-size 32：一次预测 32 帧动作，小数据建议用 32 而非默认 100
+> 代码里的 DataLoader 加: num_worker = 8
 * 继续训练
    ```
    python -u train_act_so101.py \
@@ -370,44 +384,44 @@ Lerobot
     2>&1 | tee train_act_continue.log
    ```
 * 真机验证
-   ```
-    conda run -n lerobot python run_act_policy.py \
-    --checkpoint act_so101/act_epoch_2000.pth \
-    --show-camera \
-    --exec-steps 10 \
-    --horizon 500
-   ```
+
+* 推理
+  * 干跑
+     ```
+     python eval_lerobot.py \
+        --checkpoint outputs/act_so101/checkpoints/last/pretrained_model \
+        --dry-run --horizon 5
+     ```
+  * 实机部署
+      ```
+      ACT脚本：
+      conda run -n lerobot python run_act_policy.py \
+      --checkpoint act_so101/act_epoch_2000.pth \
+      --show-camera \
+      --exec-steps 10 \
+      --horizon 500
+      ```
+      ```
+      lerobot：
+         python eval_lerobot.py \
+         --checkpoint ../so101_train/act_so101/act_epoch_2800.pth \
+         --display 
+         --horizon 300
+      ```
+   ![lerobot——eval](lerobot-eval.png)
 
 * Diffusion（精细操作好，但慢）
-> python train_lerobot.py --policy diffusion --steps 50000 --batch 16 --device cuda
-
-> Diffusion 参数 --horizon 16 --n-action-steps 8：预测 16 步动作，执行前 8 步. 推理慢（100 步 denoising），必须 GPU
-
-1. 推理
-* 干跑
    ```
-   python eval_lerobot.py \
-      --checkpoint outputs/act_so101/checkpoints/last/pretrained_model \
-      --dry-run --horizon 5
+   python train_lerobot.py 
+    --policy diffusion 
+    --steps 50000 
+    --batch 16 
+    --device cuda
    ```
-* 实机部署
-   ```
-   Lerobot：
-   python eval_lerobot.py \
-     --checkpoint ../so101_train/act_so101/act_epoch_2000.pth \
-     --display --horizon 500
-
-   conda run -n lerobot python run_act_policy.py \
-    --checkpoint act_so101/act_epoch_2000.pth \
-    --show-camera \
-    --exec-steps 10 \
-    --horizon 500
-   ```
+   > Diffusion 参数 --horizon 16 --n-action-steps 8：预测 16 步动作，执行前 8 步. 推理慢（100 步 denoising），必须 GPU
 
 ## 使用手套遥操 SO-101
-> 环境： NUC conda dexcap
-> 还未实现
-
+> 环境： NUC conda dexcap310
 ```
 cd so101_teleop
 

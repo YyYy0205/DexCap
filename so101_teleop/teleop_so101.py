@@ -9,6 +9,16 @@ if "pyarrow" not in _sys.modules:
         大写开头属性（类型名如 DataType/Array）返回真正的 type，
         使 isinstance(x, pa.DataType) 不抛 TypeError。
         """
+        # inspect.getmodule() iterates sys.modules and calls getabsfile() on every
+        # module. If these dunders fall through to __getattr__ they return _AM
+        # instances, making os.path.splitext / os.fspath raise TypeError. Class-level
+        # None lets getfile() see a falsy __file__ and safely skip us.
+        __file__    = None
+        __spec__    = None
+        __loader__  = None
+        __package__ = None
+        __path__    = None
+
         def __getattr__(self, n):
             if n and n[0].isupper():
                 # 类型名：返回真正的 class 供 isinstance() 使用
@@ -18,7 +28,14 @@ if "pyarrow" not in _sys.modules:
                 c = _AM(f"{self.__name__}.{n}")
             object.__setattr__(self, n, c)
             return c
-        def __call__(self, *a, **kw): return None
+        def __call__(self, *a, **kw):
+            # pandas ArrowDtype checks isinstance(result, pa.DataType).
+            # Use normal attribute access so __getattr__ creates DataType if needed.
+            pa = _sys.modules.get("pyarrow")
+            if pa is not None:
+                return object.__new__(pa.DataType)
+            return None
+        def __repr__(self): return f"<pyarrow-mock {self.__name__!r}>"
         def __iter__(self): return iter([])
         def __getitem__(self, k): return _AM(f"{self.__name__}[{k}]")
 
@@ -40,7 +57,7 @@ SO-101 双臂手套遥操作
                                        └─ IIRFilter（低通）
 
 用法：
-  conda activate dexcap
+  conda activate dexcap310
   cd so101_teleop
 
   # 终端1：启动手套数据服务（NUC上）
@@ -72,8 +89,25 @@ from gripper_utils import GripperMapper
 from transform_utils import compute_target
 
 from iir_filter import IIRFilter
-from tracker_reader import TrackerReader
 from glove_reader import GloveReader
+
+try:
+    from tracker_reader import TrackerReader
+    _HAS_XR = True
+except ImportError:
+    _HAS_XR = False
+
+
+class _FakeTracker:
+    """无 OpenXR 硬件时的假 tracker，返回固定位姿供测试。"""
+    def connect(self):    print("[fake-tracker] OpenXR not available, using fixed poses.")
+    def disconnect(self): pass
+    def read(self):
+        pos  = np.array([0.0, 0.0, 0.0], dtype=float)
+        quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+        return {"right_elbow": (pos, quat),
+                "left_elbow":  (pos.copy(), quat.copy()),
+                "chest":       (pos.copy(), quat.copy())}
 
 
 _JOINT_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
@@ -97,7 +131,7 @@ def _clamp_target(pos, workspace):
     return np.clip(pos, lo, hi)
 
 
-def _wait_for_trackers(tracker: TrackerReader,
+def _wait_for_trackers(tracker,
                        required=("right_elbow", "left_elbow", "chest")):
     """阻塞直到所有必需 tracker 都读到有效位姿。"""
     print(f"Waiting for trackers {list(required)} ...")
@@ -114,8 +148,9 @@ def _wait_for_trackers(tracker: TrackerReader,
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config",   default="config.yaml")
-    ap.add_argument("--dry-run",  action="store_true", help="只打印，不连机器人")
-    ap.add_argument("--no-glove", action="store_true", help="不使用手套（夹爪固定 0.5）")
+    ap.add_argument("--dry-run",     action="store_true", help="只打印，不连机器人")
+    ap.add_argument("--no-glove",    action="store_true", help="不使用手套（夹爪固定 0.5）")
+    ap.add_argument("--no-tracker",  action="store_true", help="不连 Vive Tracker，用固定位姿测试")
     args = ap.parse_args()
 
     cfg      = yaml.safe_load(open(HERE / args.config, encoding="utf-8"))
@@ -144,7 +179,10 @@ def main():
     filt_l = IIRFilter(fcfg["cutoff_hz"], hz, order=fcfg.get("order", 2), n_dim=3)
 
     # ── Tracker ─────────────────────────────────────────────────
-    tracker = TrackerReader()
+    if args.no_tracker or not _HAS_XR:
+        tracker = _FakeTracker()
+    else:
+        tracker = TrackerReader()
 
     # ── Glove ───────────────────────────────────────────────────
     glove = None
