@@ -4,19 +4,20 @@
 
 ## 方案
 
-- [x] **DexCap**
+- [x] **DexCap数据采集**
    > 提取：手掌位置, 手掌朝向（yaw）, 手指开合
 
 - [x]  **坐标映射**
    > (x, y, z, yaw)
 
-- [x]  **IK**（SO-101）
+- [x]  **IK转换**（SO-101）
    * 原流程：人手 21 关节 xyz → PyBullet IK → LEAP Hand 关节角度 → robomimic obs/actions
 
 - [x]  **机械臂replay采集数据**
 - [x]  **模仿学习（robomimic BC / BC-RNN）**
 - [x]  **ACT训练**
-- [x]  **手套遥操作** 5.7
+- [x]  **真机推理**
+- [x]  **手套遥操作** -- 5.7
 
 
 ## 难点
@@ -201,17 +202,17 @@ python playback_dataset.py -i ./data_test --fps 15
 
 * 采集数据：
 ```bash
-终端1:
+终端1: 打开手套服务器
 conda activate dexcap
 cd DexCap/STEP1_collect_data
 python redis_glove_server.py
 
-终端2:
+终端2: 数据收集
 conda activate dexcap
 cd DexCap/STEP1_collect_data_202408updates
 python vive_realsense_glove_datacollection_headless.py NAME_OF_DEMO
 ```
-![alt text](image.png)
+![数据收集](image.png)
 
 * 数据结构
 ```
@@ -245,12 +246,12 @@ python vis_vive_realsense_glove_dataset.py demo_test
 ```
 > ![alt text](image-6.png)
 ```bash
-可视化 2D color.png数据：
+可视化 RGB color.png数据：
 conda activate lerobot
 cd so101_replay
 python replay_color.py --dir ../demo_test/data
 ```
-> ![alt text](image-8.png)
+![replay](RGBreplay.png)
 
 ## 在SO—101上复现采集的数据
 
@@ -302,7 +303,9 @@ cd DexCap/so101_replay
  * `python replay_demo_so101.py --speed 0.8`
  * 优点：不受到人移动的影响
  * 效果较好，能很好反应趋势
-  
+
+![alt text](so101replay.png)
+
  方案3: 与tracker进行坐标对齐，直接使用相同坐标
 ---------------------------------------------------------
 * 理论上可以，但实际上没必要，反而更麻烦。
@@ -437,3 +440,4 @@ cd so101_teleop
   # 终端2: 实机
   python teleop_so101.py
 ```
+![alt text](teleop_101.png)
